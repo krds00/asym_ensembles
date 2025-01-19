@@ -25,7 +25,7 @@ def train_one_model(
     train_losses = []
     val_losses = []
 
-    for epoch in range(epochs):
+    for epoch in tqdm(range(epochs)):
         model.train()
         epoch_loss = 0
         for i, (Xb, yb) in enumerate(train_loader):
