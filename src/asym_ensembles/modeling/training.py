@@ -17,18 +17,27 @@ def set_global_seed(seed):
 
 
 def train_one_model(
-    model, train_loader, val_loader, criterion, optimizer, device, epochs=10
+    model,
+    train_loader,
+    val_loader,
+    criterion,
+    optimizer,
+    device,
+    max_epochs=100,
+    patience=16,
 ):
     model.to(device)
     start_time = time.time()
 
     train_losses = []
     val_losses = []
+    best_val_loss = float("inf")
+    wait = 0
 
-    for epoch in tqdm(range(epochs)):
+    for epoch in tqdm(range(max_epochs), desc="Epoch"):
         model.train()
         epoch_loss = 0
-        for i, (Xb, yb) in enumerate(train_loader):
+        for Xb, yb in train_loader:
             Xb, yb = Xb.to(device), yb.to(device)
             optimizer.zero_grad()
             preds = model(Xb)
@@ -42,13 +51,22 @@ def train_one_model(
         model.eval()
         val_loss = 0
         with torch.no_grad():
-            for i, (Xb, yb) in enumerate(val_loader):
+            for Xb, yb in val_loader:
                 Xb, yb = Xb.to(device), yb.to(device)
                 preds = model(Xb)
                 loss = criterion(preds, yb)
                 val_loss += loss.item() * Xb.size(0)
         val_loss /= len(val_loader.dataset)
         val_losses.append(val_loss)
+
+        if val_loss < best_val_loss:
+            best_val_loss = val_loss
+            wait = 0
+        else:
+            wait += 1
+        if wait >= patience:
+            print(f"Early stopping at epoch {epoch+1}")
+            break
 
     train_time = time.time() - start_time
     return model, train_time, train_losses, val_losses
@@ -121,3 +139,22 @@ def evaluate_ensemble(models, test_loader, device, task_type="regression"):
     else:
         correct = (all_preds == all_targets).sum().item()
         return correct / len(all_targets)
+
+
+def l2_distance_params(model_a, model_b):
+    distance = 0.0
+    for param_a, param_b in zip(model_a.parameters(), model_b.parameters()):
+        distance += torch.norm(param_a - param_b, p=2).item() ** 2
+    return distance**0.5
+
+
+def average_pairwise_distance(models):
+    n = len(models)
+    if n < 2:
+        return 0.0
+    distances = []
+    for i in range(n):
+        for j in range(i + 1, n):
+            d = l2_distance_params(models[i], models[j])
+            distances.append(d)
+    return float(np.mean(distances)) if distances else 0.0

@@ -145,6 +145,17 @@ class WMLP(nn.Module):
             lin.count_unused_params() for lin in self.lins if type(lin) != nn.Linear
         )
 
+    def report_masked_ratio(self):
+        total_weights = 0
+        total_masked = 0
+        for lin in self.lins:
+            if isinstance(lin, SparseLinear):
+                ratio, masked, total = calc_masked_weights_ratio(lin)
+                total_weights += total
+                total_masked += masked
+        ratio = 100.0 * (total_masked / total_weights) if total_weights else 0.0
+        return ratio, total_masked
+
 
 class MLP(nn.Module):
     def __init__(self, in_dim, hidden_dim, out_dim, num_layers, norm=None):
@@ -329,3 +340,10 @@ def make_mask(in_dim, out_dim, mask_num=0, num_fixed=6, mask_type="densest"):
         )
     else:
         raise ValueError("Invalid mask type")
+
+
+def calc_masked_weights_ratio(sp_lin: SparseLinear):
+    total = sp_lin.mask.numel()
+    masked = (1 - sp_lin.mask).sum().item()
+    ratio = 100.0 * masked / total if total > 0 else 0.0
+    return ratio, masked, total
