@@ -33,7 +33,7 @@ def set_global_seed(seed):
 
 def train_mlp_model(args):
     (i, current_seed, in_dim, hidden_dim, out_dim, config, train_loader,
-     val_loader, test_loader, criterion, metric_type, dataset_name, rep_i) = args
+     val_loader, test_loader, criterion, metric_type, dataset_name, rep_i, task_type) = args
     
     seed_value = current_seed + i
     set_global_seed(seed_value)
@@ -52,8 +52,8 @@ def train_mlp_model(args):
     return (copy.deepcopy(mlp), test_metric)
 
 def train_wmlp_model(args):
-    (i, current_seed, in_dim, hidden_dim, out_dim, config["learning_rate"], train_loader,
-     val_loader, test_loader, criterion, metric_type, dataset_name, rep_i, mask_params) = args
+    (i, current_seed, in_dim, hidden_dim, out_dim, config, train_loader,
+     val_loader, test_loader, criterion, metric_type, dataset_name, rep_i, mask_params, task_type) = args
     
     seed_value_wmlp = current_seed + 2000 + i
     set_global_seed(seed_value_wmlp)
@@ -65,7 +65,7 @@ def train_wmlp_model(args):
         wmlp, train_loader, val_loader, criterion, optimizer_wmlp,
         device=config["device"], max_epochs=config["max_epochs"], patience=config["patience"]
     )
-    if config["learning_rate"].device != "cpu":
+    if config["device"] != "cpu":
         wmlp.to("cpu")
     test_metric_wmlp = evaluate_model(wmlp, test_loader, criterion, config["device"], task_type=task_type)
     ratio, masked = wmlp.report_masked_ratio()

@@ -1,26 +1,4 @@
-cfg = {
-    "batch_size": 64,
-    "max_epochs": 200,
-    "patience": 16,
-    "learning_rate": 1e-3,
-    "weight_decay": 3e-2,
-    "hidden_dims": [64, 128, 256],
-    "ensemble_sizes": [2, 4, 8, 16, 32, 64],
-    "total_models": 64,             # max(ensemble_sizes)
-    "repeats": 10,                  # different seeds
-    "mask_type": "random_subsets",
-    "base_seed": 1234,
-    "device": "cpu", # parallel by cpu
-    "all_datasets": [
-    ["california", "regression"],
-    ["otto", "classification"],
-    ["telcom", "classification"],
-    ["mnist", "classification"]
-    ]
-    }
-
-def main(cfg):
-    
+def main(cfg): 
     import sys
     from pathlib import Path
     import torch
@@ -48,7 +26,11 @@ def main(cfg):
     import torch
     from torch.utils.data import DataLoader
     import torch.nn as nn
-    
+    from joblib import Parallel, delayed
+    import multiprocessing
+    num_cpu = multiprocessing.cpu_count()
+    n_jobs = max(1, num_cpu - 1)
+
     wandb.init(project="DeepEnsembleProject", config=cfg, name="Extended_Experiments", settings=wandb.Settings(start_method="fork"))
     config = wandb.config
     table1 = wandb.Table(
@@ -65,7 +47,7 @@ def main(cfg):
         ]
     )
     try:
-        for dataset_name, task_type in config.all_datasets:
+        for (dataset_name, task_type) in config.all_datasets:
             train_ds, val_ds, test_ds = load_dataset(dataset_name=dataset_name)
             train_loader = DataLoader(train_ds, batch_size=config.batch_size, shuffle=True)
             val_loader = DataLoader(val_ds, batch_size=config.batch_size, shuffle=False)
@@ -103,14 +85,15 @@ def main(cfg):
                     wmlp_models = []
         
                     mlp_args = [
-                        (i, current_seed, in_dim, hidden_dim, out_dim, cfg, train_loader,
-                         val_loader, test_loader, criterion, metric_type, dataset_name, rep_i)
-                        for i in range(config.total_models)
+                        (i, current_seed, in_dim, hidden_dim, out_dim, copy.deepcopy(cfg), train_loader,
+                         val_loader, test_loader, criterion, metric_type, dataset_name, rep_i, task_type)
+                        for i in range(cfg["total_models"])
                     ]
-        
-                    with concurrent.futures.ProcessPoolExecutor() as executor:
-                        results = list(tqdm(executor.map(train_mlp_model, mlp_args),
-                                            total=cfg["total_models"], desc="Training MLP"))
+                            
+                    print("Training MLP models...")
+                    mlp_results = Parallel(n_jobs=n_jobs)(
+                        delayed(train_mlp_model)(arg) for arg in tqdm(mlp_args, desc="Training MLP")
+                    )
                     
                     for model, metric in results:
                         mlp_models.append(model)
@@ -124,16 +107,17 @@ def main(cfg):
                             metric,
                             0
                         )
-        
+                            
                     wmlp_args = [
-                        (i, current_seed, in_dim, hidden_dim, out_dim, cfg, train_loader,
-                         val_loader, test_loader, criterion, metric_type, dataset_name, rep_i, mask_params)
-                        for i in range(config.total_models)
+                        (i, current_seed, in_dim, hidden_dim, out_dim, copy.deepcopy(cfg), train_loader,
+                         val_loader, test_loader, criterion, metric_type, dataset_name, rep_i, mask_params, task_type)
+                        for i in range(cfg["total_models"])
                     ]
-        
-                    with concurrent.futures.ProcessPoolExecutor() as executor:
-                        results = list(tqdm(executor.map(train_wmlp_model, wmlp_args),
-                                            total=cfg["total_models"], desc="Training WMLP"))
+                                
+                    print("Training WMLP models...")
+                    wmlp_results = Parallel(n_jobs=n_jobs)(
+                        delayed(train_wmlp_model)(arg) for arg in tqdm(wmlp_args, desc="Training WMLP")
+                    )
                     
                     for model, metric_wmlp, ratio in results:
                         wmlp_models.append(model)
@@ -210,7 +194,26 @@ def main(cfg):
         wandb.finish()
 
 if __name__ == "__main__":
-
+    cfg = {
+        "batch_size": 64,
+        "max_epochs": 200,
+        "patience": 16,
+        "learning_rate": 1e-3,
+        "weight_decay": 3e-2,
+        "hidden_dims": [64, 128, 256],
+        "ensemble_sizes": [2, 4, 8, 16, 32, 64],
+        "total_models": 64,             # max(ensemble_sizes)
+        "repeats": 10,                  # different seeds
+        "mask_type": "random_subsets",
+        "base_seed": 1234,
+        "device": "cpu", # parallel by cpu
+        "all_datasets": [
+        ["california", "regression"],
+        ["otto", "classification"],
+        ["telcom", "classification"],
+        ["mnist", "classification"]
+        ]
+        }
     
     main(cfg)
     
