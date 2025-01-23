@@ -95,7 +95,7 @@ def main(cfg):
                         delayed(train_mlp_model)(arg) for arg in tqdm(mlp_args, desc="Training MLP")
                     )
                     
-                    for model, metric in results:
+                    for model, metric in mlp_results:
                         mlp_models.append(model)
                         mlp_metrics.append(metric)
                         table1.add_data(
@@ -119,7 +119,7 @@ def main(cfg):
                         delayed(train_wmlp_model)(arg) for arg in tqdm(wmlp_args, desc="Training WMLP")
                     )
                     
-                    for model, metric_wmlp, ratio in results:
+                    for model, metric_wmlp, ratio in wmlp_results:
                         wmlp_models.append(model)
                         wmlp_metrics.append(metric_wmlp)
                         wmlp_masked_ratios.append(ratio)
