@@ -1,5 +1,6 @@
 def main(cfg): 
     import sys
+    import time
     from pathlib import Path
     import torch
     import torch.nn as nn
@@ -29,12 +30,22 @@ def main(cfg):
     from joblib import Parallel, delayed
     import multiprocessing
     num_cpu = multiprocessing.cpu_count()
-    n_jobs = max(1, num_cpu - 1)
+    n_jobs = max(1, num_cpu)
 
-    wandb.init(project="DeepEnsembleProject", config=cfg, name="Extended_Experiments", settings=wandb.Settings(start_method="fork"))
+    wandb.init(
+        project="DeepEnsembleProject",
+        config=cfg,
+        name="Full Experiment",
+        settings=wandb.Settings(start_method="fork")
+    )
     config = wandb.config
+    
     table1 = wandb.Table(
-        columns=["dataset_name", "hidden_dim", "repeat_index", "model_index", "metric_type", "metric", "masked_ratio"]
+        columns=[
+            "dataset_name", "hidden_dim", "repeat_index", "model_index",
+            "metric_type", "metric", "masked_ratio", "model_type",
+            "train_time", "epochs_until_stop"
+        ]
     )
     
     table2 = wandb.Table(
@@ -52,6 +63,7 @@ def main(cfg):
             train_loader = DataLoader(train_ds, batch_size=config.batch_size, shuffle=True)
             val_loader = DataLoader(val_ds, batch_size=config.batch_size, shuffle=False)
             test_loader = DataLoader(test_ds, batch_size=config.batch_size, shuffle=False)
+            
             for hidden_dim in config.hidden_dims:
                 print(f"\nDataset: {dataset_name}, Hidden_dim: {hidden_dim}")
                 if hidden_dim in [64, 128]:
@@ -85,8 +97,11 @@ def main(cfg):
                     wmlp_models = []
         
                     mlp_args = [
-                        (i, current_seed, in_dim, hidden_dim, out_dim, copy.deepcopy(cfg), train_loader,
-                         val_loader, test_loader, criterion, metric_type, dataset_name, rep_i, task_type)
+                        (
+                            i, current_seed, in_dim, hidden_dim, out_dim, copy.deepcopy(cfg),
+                            train_loader, val_loader, test_loader, criterion,
+                            metric_type, dataset_name, rep_i, task_type
+                        )
                         for i in range(cfg["total_models"])
                     ]
                             
@@ -95,7 +110,7 @@ def main(cfg):
                         delayed(train_mlp_model)(arg) for arg in tqdm(mlp_args, desc="Training MLP")
                     )
                     
-                    for model, metric in mlp_results:
+                    for model, metric, train_time_val, used_epochs in mlp_results:
                         mlp_models.append(model)
                         mlp_metrics.append(metric)
                         table1.add_data(
@@ -105,12 +120,18 @@ def main(cfg):
                             len(mlp_metrics),
                             metric_type,
                             metric,
-                            0
+                            0,
+                            "mlp",
+                            train_time_val,
+                            used_epochs
                         )
                             
                     wmlp_args = [
-                        (i, current_seed, in_dim, hidden_dim, out_dim, copy.deepcopy(cfg), train_loader,
-                         val_loader, test_loader, criterion, metric_type, dataset_name, rep_i, mask_params, task_type)
+                        (
+                            i, current_seed, in_dim, hidden_dim, out_dim, copy.deepcopy(cfg),
+                            train_loader, val_loader, test_loader, criterion,
+                            metric_type, dataset_name, rep_i, mask_params, task_type
+                        )
                         for i in range(cfg["total_models"])
                     ]
                                 
@@ -119,7 +140,7 @@ def main(cfg):
                         delayed(train_wmlp_model)(arg) for arg in tqdm(wmlp_args, desc="Training WMLP")
                     )
                     
-                    for model, metric_wmlp, ratio in wmlp_results:
+                    for model, metric_wmlp, ratio, train_time_val_w, used_epochs_w in wmlp_results:
                         wmlp_models.append(model)
                         wmlp_metrics.append(metric_wmlp)
                         wmlp_masked_ratios.append(ratio)
@@ -130,7 +151,10 @@ def main(cfg):
                             len(wmlp_metrics),
                             metric_type,
                             metric_wmlp,
-                            ratio
+                            ratio,
+                            "wmlp",
+                            train_time_val_w,
+                            used_epochs_w
                         )
         
                     avg_dist_mlp = average_pairwise_distance(mlp_models)
@@ -147,7 +171,6 @@ def main(cfg):
                     std_wmlp_metric = float(np.std(wmlp_metrics))
                     min_wmlp_metric = float(np.min(wmlp_metrics))
                     max_wmlp_metric = float(np.max(wmlp_metrics))
-        
         
                     ensemble_results_mlp = {}
                     ensemble_results_wmlp = {}
@@ -193,27 +216,31 @@ def main(cfg):
         
         wandb.finish()
 
+
 if __name__ == "__main__":
     cfg = {
-        "batch_size": 64,
-        "max_epochs": 200,
+        "batch_size": 256,
+        "max_epochs": 1000,
         "patience": 16,
         "learning_rate": 1e-3,
         "weight_decay": 3e-2,
-        "hidden_dims": [64, 128, 256],
-        "ensemble_sizes": [2, 4, 8, 16, 32, 64],
+        "hidden_dims": [64
+                        , 128, 256
+                       ],
+        "ensemble_sizes": [2
+                           , 4, 8, 16, 32, 64
+                          ],
         "total_models": 64,             # max(ensemble_sizes)
         "repeats": 10,                  # different seeds
         "mask_type": "random_subsets",
         "base_seed": 1234,
         "device": "cpu", # parallel by cpu
         "all_datasets": [
-        ["california", "regression"],
-        ["otto", "classification"],
-        ["telcom", "classification"],
-        ["mnist", "classification"]
+            ["california", "regression"],
+            ["otto", "classification"],
+            ["telcom", "classification"],
+            ["mnist", "classification"]
         ]
-        }
+    }
     
     main(cfg)
-    

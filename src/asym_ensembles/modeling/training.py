@@ -49,7 +49,8 @@ def train_mlp_model(args):
         mlp.to("cpu")
     test_metric = evaluate_model(mlp, test_loader, criterion, config["device"], task_type=task_type)
 
-    return (copy.deepcopy(mlp), test_metric)
+    return (copy.deepcopy(mlp), test_metric, train_time, len(train_losses))
+
 
 def train_wmlp_model(args):
     (i, current_seed, in_dim, hidden_dim, out_dim, config, train_loader,
@@ -70,7 +71,8 @@ def train_wmlp_model(args):
     test_metric_wmlp = evaluate_model(wmlp, test_loader, criterion, config["device"], task_type=task_type)
     ratio, masked = wmlp.report_masked_ratio()
 
-    return (copy.deepcopy(wmlp), test_metric_wmlp, ratio)
+    return (copy.deepcopy(wmlp), test_metric_wmlp, ratio, train_time_wmlp, len(train_losses_w))
+
     
 def train_one_model(
     model,

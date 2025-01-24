@@ -216,7 +216,7 @@ class SparseLinear(nn.Module):
         do_normal_mask=True,
     ):
         super().__init__()
-        assert out_dim < 2**in_dim, "out dim cannot be much higher than in dim"
+        # assert out_dim < 2**in_dim, "out dim cannot be much higher than in dim" # out_dim < С(in_dim, num_fixed)
         mask = make_mask(
             in_dim, out_dim, mask_type=mask_type, num_fixed=num_fixed, mask_num=mask_num
         )
@@ -289,7 +289,7 @@ def normal_mask(out_dim, in_dim, mask_num):
 def make_mask(in_dim, out_dim, mask_num=0, num_fixed=6, mask_type="densest"):
     # out_dim x in_dim matrix
     # where each row is unique
-    assert out_dim < 2 ** (in_dim)
+    # assert out_dim < 2 ** (in_dim) # out_dim < С(in_dim, num_fixed)
     assert in_dim > 0 and out_dim > 0
 
     if mask_type == "densest":

@@ -99,7 +99,7 @@ def load_covertype_dataset(test_ratio=0.2, val_ratio=0.1, seed=42):
 
 
 def load_otto_csv(
-    path_csv="../data/raw/otto.csv", test_ratio=0.2, val_ratio=0.1, seed=42
+    path_csv="data/raw/otto.csv", test_ratio=0.2, val_ratio=0.1, seed=42
 ):
     import os
 
@@ -149,7 +149,7 @@ def load_otto_csv(
 
 
 def load_telcom_csv(
-    path_csv="../data/raw/telcom.csv", test_ratio=0.2, val_ratio=0.1, seed=42
+    path_csv="data/raw/telcom.csv", test_ratio=0.2, val_ratio=0.1, seed=42
 ):
     df = pd.read_csv(path_csv)
 
@@ -204,7 +204,7 @@ def load_telcom_csv(
 
 
 def load_mnist_csv(
-    path_csv="../data/raw/mnist_784.csv", test_ratio=0.2, val_ratio=0.1, seed=42
+    path_csv="data/raw/mnist_784.csv", test_ratio=0.2, val_ratio=0.1, seed=42
 ):
     df = pd.read_csv(path_csv)
 
