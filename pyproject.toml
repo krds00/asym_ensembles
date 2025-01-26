@@ -16,6 +16,8 @@ matplotlip = "^0.2"
 plotly = "^5.24.1"
 tqdm = "^4.67.1"
 joblib = "^1.4.2"
+seaborn = "^0.13.2"
+matplotlib = "^3.10.0"
 
 
 [tool.poetry.group.dev.dependencies]

@@ -248,6 +248,115 @@ def load_mnist_csv(
     return train_ds, val_ds, test_ds
 
 
+def load_adult_csv(
+    path_csv="../data/raw/adult.csv", test_ratio=0.2, val_ratio=0.1, seed=42
+):
+    df = pd.read_csv(path_csv)
+    df["income"] = df["income"].map({"<=50K": 0, ">50K": 1})
+    df["income"] = df["income"].astype(int)
+
+    y = df["income"].values
+    df.drop(columns=["income"], inplace=True)
+
+    cat_cols = [col for col in df.columns if df[col].dtype == object]
+    num_cols = [col for col in df.columns if df[col].dtype != object]
+
+    if len(cat_cols) > 0:
+        ohe = OneHotEncoder(sparse_output=False, handle_unknown="ignore")
+        X_cat = ohe.fit_transform(df[cat_cols].fillna("MissingValue"))
+        cat_feature_names = ohe.get_feature_names_out(cat_cols)
+        X_cat_df = pd.DataFrame(X_cat, columns=cat_feature_names)
+
+        X_num_df = df[num_cols].copy().fillna(0)
+        X_full = pd.concat(
+            [X_num_df.reset_index(drop=True), X_cat_df.reset_index(drop=True)], axis=1
+        )
+    else:
+        X_full = df[num_cols].copy().fillna(0)
+
+    scaler = StandardScaler()
+    X_scaled = scaler.fit_transform(X_full)
+
+    X_trainval, X_test, y_trainval, y_test = train_test_split(
+        X_scaled, y, test_size=test_ratio, random_state=seed, stratify=y
+    )
+    X_train, X_val, y_train, y_val = train_test_split(
+        X_trainval,
+        y_trainval,
+        test_size=val_ratio,
+        random_state=seed + 1,
+        stratify=y_trainval,
+    )
+
+    X_train_t = torch.from_numpy(X_train).float()
+    y_train_t = torch.from_numpy(y_train).long()
+    X_val_t = torch.from_numpy(X_val).float()
+    y_val_t = torch.from_numpy(y_val).long()
+    X_test_t = torch.from_numpy(X_test).float()
+    y_test_t = torch.from_numpy(y_test).long()
+
+    train_ds = TensorDataset(X_train_t, y_train_t)
+    val_ds = TensorDataset(X_val_t, y_val_t)
+    test_ds = TensorDataset(X_test_t, y_test_t)
+
+    return train_ds, val_ds, test_ds
+
+
+def load_churn_csv(
+    path_csv="../data/raw/Churn_Modelling.csv", test_ratio=0.2, val_ratio=0.1, seed=42
+):
+    df = pd.read_csv(path_csv)
+    y = df["Exited"].values
+    df.drop(columns=["Exited"], inplace=True)
+
+    drop_cols = ["RowNumber", "CustomerId", "Surname"]
+    for c in drop_cols:
+        if c in df.columns:
+            df.drop(columns=[c], inplace=True)
+
+    cat_cols = [col for col in df.columns if df[col].dtype == object]
+    num_cols = [col for col in df.columns if df[col].dtype != object]
+
+    if len(cat_cols) > 0:
+        ohe = OneHotEncoder(sparse_output=False, handle_unknown="ignore")
+        X_cat = ohe.fit_transform(df[cat_cols].fillna("MissingValue"))
+        cat_feature_names = ohe.get_feature_names_out(cat_cols)
+        X_cat_df = pd.DataFrame(X_cat, columns=cat_feature_names)
+
+        X_num_df = df[num_cols].copy().fillna(0)
+        X_full = pd.concat(
+            [X_num_df.reset_index(drop=True), X_cat_df.reset_index(drop=True)], axis=1
+        )
+    else:
+        X_full = df[num_cols].copy().fillna(0)
+
+    scaler = StandardScaler()
+    X_scaled = scaler.fit_transform(X_full)
+
+    X_trainval, X_test, y_trainval, y_test = train_test_split(
+        X_scaled, y, test_size=test_ratio, random_state=seed, stratify=y
+    )
+    X_train, X_val, y_train, y_val = train_test_split(
+        X_trainval,
+        y_trainval,
+        test_size=val_ratio,
+        random_state=seed + 1,
+        stratify=y_trainval,
+    )
+
+    X_train_t = torch.from_numpy(X_train).float()
+    y_train_t = torch.from_numpy(y_train).long()
+    X_val_t = torch.from_numpy(X_val).float()
+    y_val_t = torch.from_numpy(y_val).long()
+    X_test_t = torch.from_numpy(X_test).float()
+    y_test_t = torch.from_numpy(y_test).long()
+
+    train_ds = TensorDataset(X_train_t, y_train_t)
+    val_ds = TensorDataset(X_val_t, y_val_t)
+    test_ds = TensorDataset(X_test_t, y_test_t)
+    return train_ds, val_ds, test_ds
+
+
 def load_dataset(dataset_name, test_ratio=0.2, val_ratio=0.1, seed=42):
     if dataset_name == "california":
         return load_california_housing(
@@ -265,5 +374,9 @@ def load_dataset(dataset_name, test_ratio=0.2, val_ratio=0.1, seed=42):
         return load_covertype_dataset(
             test_ratio=test_ratio, val_ratio=val_ratio, seed=seed
         )
+    elif dataset_name == "adult":
+        return load_adult_csv(test_ratio=test_ratio, val_ratio=val_ratio, seed=seed)
+    elif dataset_name == "churn":
+        return load_churn_csv(test_ratio=test_ratio, val_ratio=val_ratio, seed=seed)
     else:
         raise ValueError(f"Unknown dataset name: {dataset_name}")
