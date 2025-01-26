@@ -7,7 +7,23 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import DataLoader
 from tqdm import tqdm
-
+import sys
+from pathlib import Path
+import torch
+import torch.nn as nn
+import wandb
+from tqdm import tqdm
+from torch.utils.data import DataLoader
+from src.asym_ensembles.modeling.models import MLP, WMLP
+import numpy as np
+import copy
+import concurrent.futures
+from tqdm import tqdm
+import copy
+import numpy as np
+import torch
+from torch.utils.data import DataLoader
+import torch.nn as nn
 
 def set_global_seed(seed):
     random.seed(seed)
@@ -15,7 +31,47 @@ def set_global_seed(seed):
     torch.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
 
+def train_mlp_model(args):
+    (i, current_seed, in_dim, hidden_dim, out_dim, config, train_loader,
+     val_loader, test_loader, criterion, metric_type, dataset_name, rep_i, task_type) = args
+    
+    seed_value = current_seed + i
+    set_global_seed(seed_value)
 
+    mlp = MLP(in_dim, hidden_dim, out_dim, num_layers=4, norm=None)
+    optimizer = torch.optim.AdamW(mlp.parameters(), lr=config["learning_rate"], weight_decay=config["weight_decay"])
+
+    mlp, train_time, train_losses, val_losses = train_one_model(
+        mlp, train_loader, val_loader, criterion, optimizer,
+        device=config["device"], max_epochs=config["max_epochs"], patience=config["patience"]
+    )
+    if config["device"] != "cpu":
+        mlp.to("cpu")
+    test_metric = evaluate_model(mlp, test_loader, criterion, config["device"], task_type=task_type)
+
+    return (copy.deepcopy(mlp), test_metric)
+
+def train_wmlp_model(args):
+    (i, current_seed, in_dim, hidden_dim, out_dim, config, train_loader,
+     val_loader, test_loader, criterion, metric_type, dataset_name, rep_i, mask_params, task_type) = args
+    
+    seed_value_wmlp = current_seed + 2000 + i
+    set_global_seed(seed_value_wmlp)
+
+    wmlp = WMLP(in_dim, hidden_dim, out_dim, num_layers=4, mask_params=mask_params, norm=None)
+    optimizer_wmlp = torch.optim.AdamW(wmlp.parameters(), lr=config["learning_rate"], weight_decay=config["weight_decay"])
+
+    wmlp, train_time_wmlp, train_losses_w, val_losses_w = train_one_model(
+        wmlp, train_loader, val_loader, criterion, optimizer_wmlp,
+        device=config["device"], max_epochs=config["max_epochs"], patience=config["patience"]
+    )
+    if config["device"] != "cpu":
+        wmlp.to("cpu")
+    test_metric_wmlp = evaluate_model(wmlp, test_loader, criterion, config["device"], task_type=task_type)
+    ratio, masked = wmlp.report_masked_ratio()
+
+    return (copy.deepcopy(wmlp), test_metric_wmlp, ratio)
+    
 def train_one_model(
     model,
     train_loader,
@@ -34,7 +90,7 @@ def train_one_model(
     best_val_loss = float("inf")
     wait = 0
 
-    for epoch in tqdm(range(max_epochs), desc="Epoch"):
+    for epoch in range(max_epochs):
         model.train()
         epoch_loss = 0
         for Xb, yb in train_loader:
