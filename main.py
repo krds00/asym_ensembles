@@ -32,31 +32,16 @@ def main(cfg):
     wandb.init(
         project="DeepEnsembleProject",
         config=cfg,
-<<<<<<< HEAD
         name="Full Experiment",
         settings=wandb.Settings(start_method="fork")
-=======
-        name="Extended_Experiments",
-        settings=wandb.Settings(start_method="fork"),
->>>>>>> refs/remotes/origin/main
     )
     config = wandb.config
     
     table1 = wandb.Table(
         columns=[
-<<<<<<< HEAD
             "dataset_name", "hidden_dim", "repeat_index", "model_index",
             "metric_type", "metric", "masked_ratio", "model_type",
             "train_time", "epochs_until_stop"
-=======
-            "dataset_name",
-            "hidden_dim",
-            "repeat_index",
-            "model_index",
-            "metric_type",
-            "metric",
-            "masked_ratio",
->>>>>>> refs/remotes/origin/main
         ]
     )
 
@@ -88,14 +73,7 @@ def main(cfg):
                 train_ds, batch_size=config.batch_size, shuffle=True
             )
             val_loader = DataLoader(val_ds, batch_size=config.batch_size, shuffle=False)
-<<<<<<< HEAD
             test_loader = DataLoader(test_ds, batch_size=config.batch_size, shuffle=False)
-            
-=======
-            test_loader = DataLoader(
-                test_ds, batch_size=config.batch_size, shuffle=False
-            )
->>>>>>> refs/remotes/origin/main
             for hidden_dim in config.hidden_dims:
                 print(f"\nDataset: {dataset_name}, Hidden_dim: {hidden_dim}")
                 if hidden_dim in [64, 128]:
@@ -150,11 +128,6 @@ def main(cfg):
 
                     mlp_args = [
                         (
-<<<<<<< HEAD
-                            i, current_seed, in_dim, hidden_dim, out_dim, copy.deepcopy(cfg),
-                            train_loader, val_loader, test_loader, criterion,
-                            metric_type, dataset_name, rep_i, task_type
-=======
                             i,
                             current_seed,
                             in_dim,
@@ -168,8 +141,7 @@ def main(cfg):
                             metric_type,
                             dataset_name,
                             rep_i,
-                            task_type,
->>>>>>> refs/remotes/origin/main
+                            task_type
                         )
                         for i in range(cfg["total_models"])
                     ]
@@ -179,13 +151,7 @@ def main(cfg):
                         delayed(train_mlp_model)(arg)
                         for arg in tqdm(mlp_args, desc="Training MLP")
                     )
-<<<<<<< HEAD
-                    
                     for model, metric, train_time_val, used_epochs in mlp_results:
-=======
-
-                    for model, metric in mlp_results:
->>>>>>> refs/remotes/origin/main
                         mlp_models.append(model)
                         mlp_metrics.append(metric)
                         table1.add_data(
@@ -196,21 +162,13 @@ def main(cfg):
                             metric_type,
                             metric,
                             0,
-<<<<<<< HEAD
                             "mlp",
                             train_time_val,
                             used_epochs
-=======
->>>>>>> refs/remotes/origin/main
                         )
 
                     wmlp_args = [
                         (
-<<<<<<< HEAD
-                            i, current_seed, in_dim, hidden_dim, out_dim, copy.deepcopy(cfg),
-                            train_loader, val_loader, test_loader, criterion,
-                            metric_type, dataset_name, rep_i, mask_params, task_type
-=======
                             i,
                             current_seed,
                             in_dim,
@@ -226,7 +184,6 @@ def main(cfg):
                             rep_i,
                             mask_params,
                             task_type,
->>>>>>> refs/remotes/origin/main
                         )
                         for i in range(cfg["total_models"])
                     ]
@@ -236,13 +193,8 @@ def main(cfg):
                         delayed(train_wmlp_model)(arg)
                         for arg in tqdm(wmlp_args, desc="Training WMLP")
                     )
-<<<<<<< HEAD
                     
                     for model, metric_wmlp, ratio, train_time_val_w, used_epochs_w in wmlp_results:
-=======
-
-                    for model, metric_wmlp, ratio in wmlp_results:
->>>>>>> refs/remotes/origin/main
                         wmlp_models.append(model)
                         wmlp_metrics.append(metric_wmlp)
                         wmlp_masked_ratios.append(ratio)
@@ -254,12 +206,9 @@ def main(cfg):
                             metric_type,
                             metric_wmlp,
                             ratio,
-<<<<<<< HEAD
                             "wmlp",
                             train_time_val_w,
                             used_epochs_w
-=======
->>>>>>> refs/remotes/origin/main
                         )
 
                     avg_dist_mlp = average_pairwise_distance(mlp_models)
@@ -280,11 +229,6 @@ def main(cfg):
                     std_wmlp_metric = float(np.std(wmlp_metrics))
                     min_wmlp_metric = float(np.min(wmlp_metrics))
                     max_wmlp_metric = float(np.max(wmlp_metrics))
-<<<<<<< HEAD
-        
-=======
-
->>>>>>> refs/remotes/origin/main
                     ensemble_results_mlp = {}
                     ensemble_results_wmlp = {}
                     for ens_size in config.ensemble_sizes:
@@ -338,7 +282,6 @@ if __name__ == "__main__":
         "patience": 16,
         "learning_rate": 1e-3,
         "weight_decay": 3e-2,
-<<<<<<< HEAD
         "hidden_dims": [64
                         , 128, 256
                        ],
@@ -347,25 +290,10 @@ if __name__ == "__main__":
                           ],
         "total_models": 64,             # max(ensemble_sizes)
         "repeats": 10,                  # different seeds
-=======
-        "hidden_dims": [64, 128, 256],
-        "ensemble_sizes": [2, 4, 8, 16, 32, 64],
-        "total_models": 64,  # max(ensemble_sizes)
-        "repeats": 10,  # different seeds
->>>>>>> refs/remotes/origin/main
         "mask_type": "random_subsets",
         "base_seed": 1234,
         "device": "cpu",  # parallel by cpu
         "all_datasets": [
-<<<<<<< HEAD
-            ["california", "regression"],
-            ["otto", "classification"],
-            ["telcom", "classification"],
-            ["mnist", "classification"]
-        ]
-    }
-    
-=======
             # ["california", "regression"],
             # ["otto", "classification"],
             # ["telcom", "classification"],
@@ -374,6 +302,4 @@ if __name__ == "__main__":
             ["churn", "classification"],
         ],
     }
-
->>>>>>> refs/remotes/origin/main
     main(cfg)
