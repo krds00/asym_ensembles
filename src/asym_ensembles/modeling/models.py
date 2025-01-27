@@ -8,6 +8,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+
 import wandb
 
 
@@ -257,7 +258,8 @@ class SparseLinear(nn.Module):
         # return F.linear(x, self.mask * self.weight, self.bias)
 
     def reset_parameters(self):
-        nn.init.kaiming_uniform_(self.weight, a=math.sqrt(5))
+        nn.init.kaiming_uniform_(self.weight, a=math.sqrt(5))  # TODO: CHECK THAT
+        # self.weight.data = 0 * self.mask
         self.weight.data = (
             self.weight.data * self.mask
             + (1 - self.mask) * self.mask_constant * self.normal_mask

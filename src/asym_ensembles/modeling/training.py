@@ -1,3 +1,4 @@
+import copy
 import random
 import time
 
@@ -6,24 +7,11 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import DataLoader
-from tqdm import tqdm
-import sys
-from pathlib import Path
-import torch
-import torch.nn as nn
-import wandb
-from tqdm import tqdm
-from torch.utils.data import DataLoader
+
+from src.asym_ensembles.data_loaders import load_dataset
 from src.asym_ensembles.modeling.models import MLP, WMLP
-import numpy as np
-import copy
-import concurrent.futures
-from tqdm import tqdm
-import copy
-import numpy as np
-import torch
-from torch.utils.data import DataLoader
-import torch.nn as nn
+from src.asym_ensembles.modeling.moe import MoE
+
 
 def set_global_seed(seed):
     random.seed(seed)
@@ -31,49 +19,111 @@ def set_global_seed(seed):
     torch.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
 
+
 def train_mlp_model(args):
-    (i, current_seed, in_dim, hidden_dim, out_dim, config, train_loader,
-     val_loader, test_loader, criterion, metric_type, dataset_name, rep_i, task_type) = args
-    
+    (
+        i,
+        current_seed,
+        in_dim,
+        hidden_dim,
+        out_dim,
+        config,
+        train_loader,
+        val_loader,
+        test_loader,
+        criterion,
+        metric_type,
+        dataset_name,
+        rep_i,
+        task_type,
+    ) = args
+
     seed_value = current_seed + i
     set_global_seed(seed_value)
 
     mlp = MLP(in_dim, hidden_dim, out_dim, num_layers=4, norm=None)
-    optimizer = torch.optim.AdamW(mlp.parameters(), lr=config["learning_rate"], weight_decay=config["weight_decay"])
+    optimizer = torch.optim.AdamW(
+        mlp.parameters(),
+        lr=config["learning_rate"],
+        weight_decay=config["weight_decay"],
+    )
 
     mlp, train_time, train_losses, val_losses = train_one_model(
-        mlp, train_loader, val_loader, criterion, optimizer,
-        device=config["device"], max_epochs=config["max_epochs"], patience=config["patience"]
+        mlp,
+        train_loader,
+        val_loader,
+        criterion,
+        optimizer,
+        device=config["device"],
+        max_epochs=config["max_epochs"],
+        patience=config["patience"],
     )
     if config["device"] != "cpu":
         mlp.to("cpu")
-    test_metric = evaluate_model(mlp, test_loader, criterion, config["device"], task_type=task_type)
+    test_metric = evaluate_model(
+        mlp, test_loader, criterion, config["device"], task_type=task_type
+    )
 
     return (copy.deepcopy(mlp), test_metric, train_time, len(train_losses))
 
 
 def train_wmlp_model(args):
-    (i, current_seed, in_dim, hidden_dim, out_dim, config, train_loader,
-     val_loader, test_loader, criterion, metric_type, dataset_name, rep_i, mask_params, task_type) = args
-    
-    seed_value_wmlp = current_seed + 2000 + i # TODO: тут мб одну инициалищацию?
+    (
+        i,
+        current_seed,
+        in_dim,
+        hidden_dim,
+        out_dim,
+        config,
+        train_loader,
+        val_loader,
+        test_loader,
+        criterion,
+        metric_type,
+        dataset_name,
+        rep_i,
+        mask_params,
+        task_type,
+    ) = args
+
+    seed_value_wmlp = current_seed + 2000 + i  # TODO: тут мб одну инициалищацию?
     set_global_seed(seed_value_wmlp)
 
-    wmlp = WMLP(in_dim, hidden_dim, out_dim, num_layers=4, mask_params=mask_params, norm=None)
-    optimizer_wmlp = torch.optim.AdamW(wmlp.parameters(), lr=config["learning_rate"], weight_decay=config["weight_decay"])
+    wmlp = WMLP(
+        in_dim, hidden_dim, out_dim, num_layers=4, mask_params=mask_params, norm=None
+    )
+    optimizer_wmlp = torch.optim.AdamW(
+        wmlp.parameters(),
+        lr=config["learning_rate"],
+        weight_decay=config["weight_decay"],
+    )
 
     wmlp, train_time_wmlp, train_losses_w, val_losses_w = train_one_model(
-        wmlp, train_loader, val_loader, criterion, optimizer_wmlp,
-        device=config["device"], max_epochs=config["max_epochs"], patience=config["patience"]
+        wmlp,
+        train_loader,
+        val_loader,
+        criterion,
+        optimizer_wmlp,
+        device=config["device"],
+        max_epochs=config["max_epochs"],
+        patience=config["patience"],
     )
     if config["device"] != "cpu":
         wmlp.to("cpu")
-    test_metric_wmlp = evaluate_model(wmlp, test_loader, criterion, config["device"], task_type=task_type)
+    test_metric_wmlp = evaluate_model(
+        wmlp, test_loader, criterion, config["device"], task_type=task_type
+    )
     ratio, masked = wmlp.report_masked_ratio()
 
-    return (copy.deepcopy(wmlp), test_metric_wmlp, ratio, train_time_wmlp, len(train_losses_w))
+    return (
+        copy.deepcopy(wmlp),
+        test_metric_wmlp,
+        ratio,
+        train_time_wmlp,
+        len(train_losses_w),
+    )
 
-    
+
 def train_one_model(
     model,
     train_loader,
@@ -216,3 +266,111 @@ def average_pairwise_distance(models):
             d = l2_distance_params(models[i], models[j])
             distances.append(d)
     return float(np.mean(distances)) if distances else 0.0
+
+
+def train_moe_single_combination(args):
+    (
+        dataset_name,
+        task_type,
+        num_experts,
+        hidden_dim,
+        model_type_str,
+        rep_i,
+        config,
+    ) = args
+
+    current_seed = config["base_seed"] + rep_i * 10000
+    set_global_seed(current_seed)
+
+    train_ds, val_ds, test_ds = load_dataset(dataset_name)
+    train_loader = DataLoader(train_ds, batch_size=config["batch_size"], shuffle=True)
+    val_loader = DataLoader(val_ds, batch_size=config["batch_size"], shuffle=False)
+    test_loader = DataLoader(test_ds, batch_size=config["batch_size"], shuffle=False)
+
+    if task_type == "regression":
+        out_dim = 1
+        criterion = nn.MSELoss()
+        metric_type = "rmse"
+    else:
+        out_dim = len(torch.unique(train_ds.tensors[1]))
+        criterion = nn.CrossEntropyLoss()
+        metric_type = "accuracy"
+
+    in_dim = train_ds.tensors[0].shape[1]
+    if model_type_str == "mlp":
+        ExpertClass = MLP
+        exp_params = {"num_layers": 4, "hidden_dim": hidden_dim}
+    else:
+        ExpertClass = WMLP
+        mask_params = {
+            0: {
+                "mask_constant": 1,
+                "mask_type": config["mask_type"],
+                "do_normal_mask": True,
+                "num_fixed": 2,
+            },
+            1: {
+                "mask_constant": 1,
+                "mask_type": config["mask_type"],
+                "do_normal_mask": True,
+                "num_fixed": 3,
+            },
+            2: {
+                "mask_constant": 1,
+                "mask_type": config["mask_type"],
+                "do_normal_mask": True,
+                "num_fixed": 3,
+            },
+            3: {
+                "mask_constant": 1,
+                "mask_type": config["mask_type"],
+                "do_normal_mask": True,
+                "num_fixed": 3,
+            },
+        }
+        exp_params = {
+            "num_layers": 4,
+            "hidden_dim": hidden_dim,
+            "mask_params": mask_params,
+        }
+
+    moe_model = MoE(
+        in_dim=in_dim,
+        out_dim=out_dim,
+        num_experts=num_experts,
+        expert_class=ExpertClass,
+        expert_params=exp_params,
+    )
+
+    optimizer = torch.optim.AdamW(
+        moe_model.parameters(),
+        lr=config["learning_rate"],
+        weight_decay=config["weight_decay"],
+    )
+
+    moe_model, train_time, train_losses, val_losses = train_one_model(
+        moe_model,
+        train_loader,
+        val_loader,
+        criterion,
+        optimizer,
+        device=config["device"],
+        max_epochs=config["max_epochs"],
+        patience=config["patience"],
+    )
+
+    test_metric = evaluate_model(
+        moe_model, test_loader, criterion, config["device"], task_type=task_type
+    )
+
+    return (
+        dataset_name,
+        num_experts,
+        hidden_dim,
+        rep_i + 1,
+        metric_type,
+        model_type_str,
+        test_metric,
+        len(train_losses),
+        train_time,
+    )

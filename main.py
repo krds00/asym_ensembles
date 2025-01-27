@@ -283,21 +283,21 @@ def main(cfg):
 
 
 def main_moe(cfg):
+    """
+    Аналог main(), но распараллеливаем
+    (dataset_name, num_experts, hidden_dim, model_type, rep_i)
+    """
     import multiprocessing
+    from copy import deepcopy
 
-    import torch
-    import torch.nn as nn
-    from torch.utils.data import DataLoader
+    from joblib import Parallel, delayed
+    from tqdm import tqdm
 
     import wandb
-    from src.asym_ensembles.data_loaders import load_dataset
-    from src.asym_ensembles.modeling.models import MLP, WMLP
-    from src.asym_ensembles.modeling.moe import MoE
-    from src.asym_ensembles.modeling.training import (
-        evaluate_model,
-        set_global_seed,
-        train_one_model,
-    )
+    from src.asym_ensembles.modeling.training import train_moe_single_combination
+
+    num_cpu = multiprocessing.cpu_count()
+    n_jobs = max(1, num_cpu)
 
     wandb.init(
         project="MoE_Experiments",
@@ -306,7 +306,6 @@ def main_moe(cfg):
         settings=wandb.Settings(start_method="fork"),
     )
     config = wandb.config
-
     table3 = wandb.Table(
         columns=[
             "dataset_name",
@@ -314,138 +313,40 @@ def main_moe(cfg):
             "hidden_dim",
             "repeat_index",
             "metric_type",
-            "model_type",  # "mlp" or "wmlp"
+            "model_type",
             "metric",
             "num_epochs",
             "train_time",
         ]
     )
 
-    try:
-        for dataset_name, task_type in config["all_datasets"]:
-            train_ds, val_ds, test_ds = load_dataset(dataset_name)
-            train_loader = DataLoader(
-                train_ds, batch_size=config["batch_size"], shuffle=True
-            )
-            val_loader = DataLoader(
-                val_ds, batch_size=config["batch_size"], shuffle=False
-            )
-            test_loader = DataLoader(
-                test_ds, batch_size=config["batch_size"], shuffle=False
-            )
+    combos = []
+    for dataset_name, task_type in config["all_datasets"]:
+        for num_experts in config["num_experts"]:
+            for model_type_str in ["mlp", "wmlp"]:
+                for rep_i in range(config["repeats"]):
+                    combos.append(
+                        (
+                            dataset_name,
+                            task_type,
+                            num_experts,
+                            1024 // num_experts,
+                            model_type_str,
+                            rep_i,
+                            deepcopy(cfg),
+                        )
+                    )
 
-            if task_type == "regression":
-                out_dim = 1
-                criterion = nn.MSELoss()
-                metric_type = "rmse"
-            else:
-                out_dim = len(torch.unique(train_ds.tensors[1]))
-                criterion = nn.CrossEntropyLoss()
-                metric_type = "accuracy"
+    results = Parallel(n_jobs=n_jobs)(
+        delayed(train_moe_single_combination)(combo)
+        for combo in tqdm(combos, desc="MoE combos")
+    )
 
-            for num_experts in config["num_experts"]:
-                for hidden_dim in config["hidden_dims"]:
-                    for model_type_str in ["mlp", "wmlp"]:
-                        for rep_i in range(config["repeats"]):
-                            print(
-                                f"[MoE] dataset={dataset_name}, num_experts={num_experts}, hidden_dim={hidden_dim}, model_type={model_type_str}, repeat={rep_i+1}/{config['repeats']}"
-                            )
+    for row in results:
+        table3.add_data(*row)
 
-                            current_seed = config["base_seed"] + rep_i * 10000
-                            set_global_seed(current_seed)
-
-                            if model_type_str == "mlp":
-                                ExpertClass = MLP
-                                exp_params = {"num_layers": 4, "hidden_dim": hidden_dim}
-                            else:
-                                ExpertClass = WMLP
-                                mask_params = {
-                                    0: {
-                                        "mask_constant": 1,
-                                        "mask_type": config["mask_type"],
-                                        "do_normal_mask": True,
-                                        "num_fixed": 2,
-                                    },
-                                    1: {
-                                        "mask_constant": 1,
-                                        "mask_type": config["mask_type"],
-                                        "do_normal_mask": True,
-                                        "num_fixed": 3,
-                                    },
-                                    2: {
-                                        "mask_constant": 1,
-                                        "mask_type": config["mask_type"],
-                                        "do_normal_mask": True,
-                                        "num_fixed": 3,
-                                    },
-                                    3: {
-                                        "mask_constant": 1,
-                                        "mask_type": config["mask_type"],
-                                        "do_normal_mask": True,
-                                        "num_fixed": 3,
-                                    },
-                                }
-                                exp_params = {
-                                    "num_layers": 4,
-                                    "hidden_dim": hidden_dim,
-                                    "mask_params": mask_params,
-                                }
-
-                            in_dim = train_ds.tensors[0].shape[1]
-
-                            moe_model = MoE(
-                                in_dim=in_dim,
-                                out_dim=out_dim,
-                                num_experts=num_experts,
-                                expert_class=ExpertClass,
-                                expert_params=exp_params,
-                            )
-
-                            optimizer = torch.optim.AdamW(
-                                moe_model.parameters(),
-                                lr=config["learning_rate"],
-                                weight_decay=config["weight_decay"],
-                            )
-
-                            moe_model, train_time, train_losses, val_losses = (
-                                train_one_model(
-                                    moe_model,
-                                    train_loader,
-                                    val_loader,
-                                    criterion,
-                                    optimizer,
-                                    device=config["device"],
-                                    max_epochs=config["max_epochs"],
-                                    patience=config["patience"],
-                                )
-                            )
-
-                            test_metric = evaluate_model(
-                                moe_model,
-                                test_loader,
-                                criterion,
-                                config["device"],
-                                task_type=task_type,
-                            )
-
-                            table3.add_data(
-                                dataset_name,
-                                num_experts,
-                                hidden_dim,
-                                rep_i + 1,
-                                metric_type,
-                                model_type_str,  # "mlp" / "wmlp"
-                                test_metric,
-                                len(train_losses),
-                                train_time,
-                            )
-
-    except Exception as e:
-        print(e)
-
-    finally:
-        wandb.log({"MoE_Results_Table3": table3})
-        wandb.finish()
+    wandb.log({"MoE_Results_Table3": table3})
+    wandb.finish()
 
 
 # if __name__ == "__main__":
@@ -472,26 +373,17 @@ if __name__ == "__main__":
         "patience": 16,
         "learning_rate": 1e-3,
         "weight_decay": 3e-2,
+        "repeats": 1,
         "num_experts": [
             4,
             # 8, 16
         ],
-        "hidden_dims": [
-                        256, 
-                        # 128,
-                        # 64,
-                        ],
-        "repeats": 1,
         "mask_type": "random_subsets",
         "base_seed": 1234,
         "device": "cpu",
         "all_datasets": [
             ["california", "regression"],
             ["otto", "classification"],
-            # ["telcom", "classification"],
-            # ["mnist", "classification"],
-            # ["adult", "classification"],
-            # ["churn", "classification"],
         ],
     }
     main_moe(cfg)
