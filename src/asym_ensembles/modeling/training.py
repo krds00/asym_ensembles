@@ -56,7 +56,7 @@ def train_wmlp_model(args):
     (i, current_seed, in_dim, hidden_dim, out_dim, config, train_loader,
      val_loader, test_loader, criterion, metric_type, dataset_name, rep_i, mask_params, task_type) = args
     
-    seed_value_wmlp = current_seed + 2000 + i
+    seed_value_wmlp = current_seed + 2000 + i # TODO: тут мб одну инициалищацию?
     set_global_seed(seed_value_wmlp)
 
     wmlp = WMLP(in_dim, hidden_dim, out_dim, num_layers=4, mask_params=mask_params, norm=None)
