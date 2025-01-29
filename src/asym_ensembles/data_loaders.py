@@ -103,7 +103,6 @@ def load_otto_csv(
 ):
     import os
 
-    print(os.getcwd())
     df = pd.read_csv(path_csv)
     if "id" in df.columns:
         df.drop(columns=["id"], inplace=True)
