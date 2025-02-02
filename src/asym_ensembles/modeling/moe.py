@@ -7,12 +7,12 @@ import torch.nn.functional as F
 
 class MoE(nn.Module):
     def __init__(
-        self,
-        in_dim: int,
-        out_dim: int,
-        num_experts: int,
-        expert_class: Union[Type[nn.Module], List[Type[nn.Module]]],
-        expert_params: Union[Dict, List[Dict]],
+            self,
+            in_dim: int,
+            out_dim: int,
+            num_experts: int,
+            expert_class: Union[Type[nn.Module], List[Type[nn.Module]]],
+            expert_params: Union[Dict, List[Dict]],
     ):
         super().__init__()
         self.in_dim = in_dim
@@ -42,7 +42,7 @@ class MoE(nn.Module):
         self.experts = nn.ModuleList()
         for i in range(num_experts):
             cls_k = expert_classes[i]
-            par_k = experts_params_list[i]
+            par_k = experts_params_list[i]  # TODO: nicht verstanden, warum machst du es?
 
             if "in_dim" not in par_k:
                 par_k["in_dim"] = in_dim
@@ -52,7 +52,7 @@ class MoE(nn.Module):
             expert_k = cls_k(**par_k)
             self.experts.append(expert_k)
 
-    def init_gating_layer(self):
+    def init_gating_layer(self):  # TODO: why do not use a default init?
         """
         Xavier Uniform.
         """
