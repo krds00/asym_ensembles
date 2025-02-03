@@ -27,7 +27,7 @@ class AsymSwiGLU(nn.Module):
 
 class SigmaMLP(nn.Module):
     def __init__(
-        self, in_dim, hidden_dim, out_dim, num_layers, norm=None, asym_act=True
+            self, in_dim, hidden_dim, out_dim, num_layers, norm=None, asym_act=True
     ):
         super().__init__()
         self.lins = nn.ModuleList()
@@ -206,15 +206,15 @@ class MLP(nn.Module):
 
 class SparseLinear(nn.Module):
     def __init__(
-        self,
-        in_dim,
-        out_dim,
-        bias=True,
-        mask_type="densest",
-        mask_constant=1,
-        mask_num=0,
-        num_fixed=6,
-        do_normal_mask=True,
+            self,
+            in_dim,
+            out_dim,
+            bias=True,
+            mask_type="densest",
+            mask_constant=1,
+            mask_num=0,
+            num_fixed=6,
+            do_normal_mask=True,
     ):
         super().__init__()
         # assert out_dim < 2**in_dim, "out dim cannot be much higher than in dim" # out_dim < С(in_dim, num_fixed)
@@ -250,8 +250,8 @@ class SparseLinear(nn.Module):
 
     def forward(self, x):
         self.weight.data = (
-            self.weight.data * self.mask
-            + (1 - self.mask) * self.mask_constant * self.normal_mask
+                self.weight.data * self.mask
+                + (1 - self.mask) * self.mask_constant * self.normal_mask
         )
 
         return F.linear(x, self.weight, self.bias)
@@ -261,8 +261,8 @@ class SparseLinear(nn.Module):
         nn.init.kaiming_uniform_(self.weight, a=math.sqrt(5))  # TODO: CHECK THAT
         # self.weight.data = 0 * self.mask
         self.weight.data = (
-            self.weight.data * self.mask
-            + (1 - self.mask) * self.mask_constant * self.normal_mask
+                self.weight.data * self.mask
+                + (1 - self.mask) * self.mask_constant * self.normal_mask
         )  # set entries where mask is zero to the normal mask at that point
 
         if self.bias is not None:
@@ -270,7 +270,7 @@ class SparseLinear(nn.Module):
             bound = 1 / math.sqrt(fan_in) if fan_in > 0 else 0
             nn.init.uniform_(self.bias, -bound, bound)
 
-    def count_unused_params(self):
+    def count_unused_params(self):  # TODO: add that to the logs (better as a ratio unused/total)
         return (1 - self.mask.int()).sum().item()
 
 
@@ -282,7 +282,6 @@ def get_subset(num_cols, row_idx, num_sample, mask_num):
 
 
 def normal_mask(out_dim, in_dim, mask_num):
-
     g = torch.Generator()
     g.manual_seed(abs(hash(str(mask_num))))
     return torch.randn(size=(out_dim, in_dim), generator=g)

@@ -303,7 +303,7 @@ def train_moe_single_combination(args):
         exp_params = {"num_layers": 4, "hidden_dim": hidden_dim}
     else:
         ExpertClass = WMLP
-        mask_params = {  # TODO: okay, but when hidden_dim is increased/decreased, how do you scale it?
+        mask_params = {  # TODO: okay, but when hidden_dim is increased/decreased, how do you scale it? change!!!!
             0: {
                 "mask_constant": 1,
                 "mask_type": config["mask_type"],

@@ -384,7 +384,7 @@ if __name__ == "__main__":
             ["california", "regression"],
             ["otto", "classification"],
         ],
-        # "model_type_str" : ["mlp", "wmlp"],
-        "model_type_str": ["imlp", "iwmlp"],  # mlp and wmlp with weight interpolation, after each layer
+        "model_type_str" : ["mlp", "wmlp"],
+        # "model_type_str": ["imlp", "iwmlp"],  # mlp and wmlp with weight interpolation, after each layer
     }
     main_moe(cfg)
