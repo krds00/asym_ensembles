@@ -13,7 +13,6 @@ class GumbelGatingNetwork(nn.Module):
         self.lin = nn.Linear(in_features, num_experts)
         self.tau = tau
         self.device = device
-        print(f'tau={self.tau}')
 
     def forward(self, x, num_samples: int, hard: bool = False):
         logits = self.lin(x)  # shape: (batch, num_experts) or (num_samples, batch, num_experts)

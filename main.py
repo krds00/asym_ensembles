@@ -200,11 +200,11 @@ def main(cfg):
                     )
 
                     for (
-                            model,
-                            metric_wmlp,
-                            ratio,
-                            train_time_val_w,
-                            used_epochs_w,
+                        model,
+                        metric_wmlp,
+                        ratio,
+                        train_time_val_w,
+                        used_epochs_w,
                     ) in wmlp_results:
                         wmlp_models.append(model)
                         wmlp_metrics.append(metric_wmlp)
@@ -322,6 +322,7 @@ def main_moe(cfg):
             "metric",
             "num_epochs",
             "train_time",
+            "gating_type",
         ]
     )
 
@@ -339,7 +340,7 @@ def main_moe(cfg):
     combos = []
     for dataset_name, task_type in config["all_datasets"]:
         for num_experts in config["num_experts"]:
-            for model_type_str in config['model_type_str']:
+            for model_type_str in config["model_type_str"]:
                 for rep_i in range(config["repeats"]):
                     combos.append(
                         (
@@ -381,6 +382,7 @@ def main_moe(cfg):
             test_metric,
             num_epochs,
             train_time,
+            config["gating_type"],
         )
         if alpha_list is not None:
             alpha_table.add_data(
@@ -438,22 +440,23 @@ if __name__ == "__main__":
         "weight_decay": 3e-2,
         "repeats": 1,
         "num_experts": [
-            4, 8, 16, 32
+            4,
+            # 8,
+            # 16, 32
         ],
         "mask_type": "random_subsets",
         "base_seed": 1234,
         "device": "cpu",
         "all_datasets": [
-            ["california", "regression"],
-            # ["otto", "classification"],
+            # ["california", "regression"],
+            ["otto", "classification"],
             # ["telcom", "classification"],
             # ["mnist", "classification"],
             # ["adult", "classification"],
-            # ["churn", "classification"],
+            ["churn", "classification"],
         ],
         "model_type_str": ["mlp", "wmlp", "imlp", "iwmlp"],
-        # "gating_type": 'standard',
-        "gating_type": 'gumbel',
-        # "model_type_str": ["imlp", "iwmlp"],  # mlp and wmlp with weight interpolation, after each layer
+        "gating_type": "standard",
+        # "gating_type": "gumbel",
     }
     main_moe(cfg)

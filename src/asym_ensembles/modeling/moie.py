@@ -1,7 +1,8 @@
 import torch
 from torch import nn
-from src.asym_ensembles.modeling.models import SparseLinear
+
 from src.asym_ensembles.modeling.gumbel import GumbelGatingNetwork
+from src.asym_ensembles.modeling.models import SparseLinear
 
 
 class MoIEBlock(nn.Module):
@@ -13,23 +14,44 @@ class MoIEBlock(nn.Module):
       3) Optionally apply an activation (e.g. ReLU).
     """
 
-    def __init__(self, in_features, out_features, num_experts, experts_type_str, mask_params, layer_number,
-                 activation=True):
+    def __init__(
+        self,
+        in_features,
+        out_features,
+        num_experts,
+        experts_type_str,
+        mask_params,
+        layer_number,
+        activation=True,
+    ):
         """
 
         @type experts_type_str: str in ['MLP', 'WMLP']
         """
-        assert experts_type_str in ['imlp', 'iwmlp'], f'experts type: {experts_type_str} is invalid '
+        assert experts_type_str in [
+            "imlp",
+            "iwmlp",
+        ], f"experts type: {experts_type_str} is invalid "
         super().__init__()
         self.num_experts = num_experts
         self.activation = activation
 
         # Create K linear experts as a ModuleList
-        self.experts = nn.ModuleList([
-            nn.Linear(in_features, out_features) if experts_type_str == 'imlp'
-            else SparseLinear(in_features, out_features, **mask_params[0], mask_num=layer_number)
-            for _ in range(num_experts)
-        ])
+        self.experts = nn.ModuleList(
+            [
+                (
+                    nn.Linear(in_features, out_features)
+                    if experts_type_str == "imlp"
+                    else SparseLinear(
+                        in_features,
+                        out_features,
+                        **mask_params[0],
+                        mask_num=layer_number,
+                    )
+                )
+                for _ in range(num_experts)
+            ]
+        )
         if self.activation:
             self.relu = nn.ReLU()
 
@@ -72,26 +94,26 @@ class MoIEBlock(nn.Module):
 
 class MoIE(nn.Module):
     def __init__(
-            self,
-            *,
-            in_features: None | int = None,
-            out_features: None | int = None,
-            num_layers: int,
-            hidden_dim: int,
-            # dropout: float, TODO: let's add?
-            activation: str = 'ReLU',
-            # activation: str = 'GELU',
-            num_experts: int,
-            experts_type_str: str,
-            mask_params: None | dict,
-            gating_type: str = 'standard',  # ['standard' or 'bayesian']
-            device: str = 'cpu',
-            tau: int = 2.0,
-            default_num_samples: int = 10,
+        self,
+        *,
+        in_features: None | int = None,
+        out_features: None | int = None,
+        num_layers: int,
+        hidden_dim: int,
+        # dropout: float, TODO: let's add?
+        activation: str = "ReLU",
+        # activation: str = 'GELU',
+        num_experts: int,
+        experts_type_str: str,
+        mask_params: None | dict,
+        gating_type: str = "standard",  # ['standard' or 'bayesian']
+        device: str = "cpu",
+        tau: int = 2.0,
+        default_num_samples: int = 10,
     ) -> None:
 
-        assert gating_type in ['standard', 'gumbel']
-        assert experts_type_str in ['imlp', 'iwmlp']
+        assert gating_type in ["standard", "gumbel"]
+        assert experts_type_str in ["imlp", "iwmlp"]
 
         super().__init__()
 
@@ -101,32 +123,35 @@ class MoIE(nn.Module):
         self.gating_type = gating_type
         self.hidden_dim = hidden_dim
         self.mask_params = mask_params
-        print(f'gating type: {self.gating_type}')
-        print(f'num experts: {self.num_experts}')
-        print(f'hidden dim: {self.hidden_dim}')
-        print(f'mask params: {self.mask_params}')
         # d_first = hidden_dim // num_experts if in_features is None else in_features
         d_first = hidden_dim if in_features is None else in_features
 
         self.stat_alpha_sum = None
         # Gating network
-        if self.gating_type == 'standard':
+        if self.gating_type == "standard":
             self.gate = nn.Sequential(
-                nn.Linear(d_first, num_experts),
-                nn.Softmax(dim=-1)
+                nn.Linear(d_first, num_experts), nn.Softmax(dim=-1)
             )
-        elif self.gating_type == 'gumbel':
-            self.gate = GumbelGatingNetwork(d_first, num_experts, tau=tau, device=device)
+        elif self.gating_type == "gumbel":
+            self.gate = GumbelGatingNetwork(
+                d_first, num_experts, tau=tau, device=device
+            )
         else:
-            assert False, f'The gating type {self.gating_type} is not supported'
+            assert False, f"The gating type {self.gating_type} is not supported"
 
         self.blocks = nn.ModuleList(
             [
                 nn.Sequential(
                     # MoIEBlock(d_first if i == 0 else hidden_dim // num_experts, hidden_dim // num_experts,
-                    MoIEBlock(d_first if i == 0 else hidden_dim, hidden_dim,
-                              num_experts,
-                              experts_type_str, mask_params, layer_number=i, activation=False),
+                    MoIEBlock(
+                        d_first if i == 0 else hidden_dim,
+                        hidden_dim,
+                        num_experts,
+                        experts_type_str,
+                        mask_params,
+                        layer_number=i,
+                        activation=False,
+                    ),
                     getattr(nn, activation)(),
                     # nn.Dropout(dropout)
                 )
@@ -135,9 +160,19 @@ class MoIE(nn.Module):
         )
 
         # self.output = None if out_features is None else MoIEBlock(hidden_dim // num_experts, out_features, num_experts,
-        self.output = None if out_features is None else MoIEBlock(hidden_dim, out_features, num_experts,
-                                                                  experts_type_str, mask_params, num_layers,
-                                                                  activation=False)
+        self.output = (
+            None
+            if out_features is None
+            else MoIEBlock(
+                hidden_dim,
+                out_features,
+                num_experts,
+                experts_type_str,
+                mask_params,
+                num_layers,
+                activation=False,
+            )
+        )
 
         self.device = device
         self.gating_type = gating_type
@@ -157,7 +192,11 @@ class MoIE(nn.Module):
         else:
             num_samples = self.default_num_samples
 
-        alpha = self.gate(x) if self.gating_type == 'standard' else self.gate(x, num_samples)  # shape (B, K)
+        alpha = (
+            self.gate(x)
+            if self.gating_type == "standard"
+            else self.gate(x, num_samples)
+        )  # shape (B, K)
         # store for later analysis
         if self.training:
             if self.stat_alpha_sum is None:
@@ -167,7 +206,7 @@ class MoIE(nn.Module):
         # if np.random.random() < 0.01:
         #     print(f'alphas:{self.stat_alpha_mean}')
 
-        if not self.training and self.gating_type == 'gumbel':
+        if not self.training and self.gating_type == "gumbel":
             # since it is a linear interpolation, we can do monte carlo here
             alpha = torch.mean(alpha, dim=0)
         # Pass through 1st MoE block
