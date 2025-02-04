@@ -8,17 +8,17 @@ import torch.nn.functional as F
 class MoE(nn.Module):
     def __init__(
         self,
-        in_dim: int,
-        out_dim: int,
+        in_features: int,
+        out_features: int,
         num_experts: int,
         expert_class: Union[Type[nn.Module], List[Type[nn.Module]]],
         expert_params: Union[Dict, List[Dict]],
     ):
         super().__init__()
-        self.in_dim = in_dim
-        self.out_dim = out_dim
+        self.in_features = in_features
+        self.out_features = out_features
         self.num_experts = num_experts
-        self.gating_layer = nn.Linear(in_dim, num_experts)
+        self.gating_layer = nn.Linear(in_features, num_experts)
         self.init_gating_layer()
 
         if isinstance(expert_class, list):
@@ -44,10 +44,10 @@ class MoE(nn.Module):
             cls_k = expert_classes[i]
             par_k = experts_params_list[i]
 
-            if "in_dim" not in par_k:
-                par_k["in_dim"] = in_dim
-            if "out_dim" not in par_k:
-                par_k["out_dim"] = out_dim
+            if "in_features" not in par_k:
+                par_k["in_features"] = in_features
+            if "out_features" not in par_k:
+                par_k["out_features"] = out_features
 
             expert_k = cls_k(**par_k)
             self.experts.append(expert_k)
@@ -62,15 +62,15 @@ class MoE(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """
-        x: (batch, in_dim).
-        Output: (batch, out_dim).
+        x: (batch, in_features).
+        Output: (batch, out_features).
         """
         logits = self.gating_layer(x)  # (batch, num_experts)
         alpha = F.softmax(logits, dim=-1)  # (batch, num_experts)
 
         expert_outs = []
         for k in range(self.num_experts):
-            y_k = self.experts[k](x)  # (batch, out_dim)
+            y_k = self.experts[k](x)  # (batch, out_features)
             expert_outs.append(y_k)
 
         stack_yo = torch.stack(expert_outs, dim=0)
@@ -78,8 +78,8 @@ class MoE(nn.Module):
         # alpha: (batch, num_experts) => (num_experts, batch)
         alpha_t = alpha.transpose(0, 1).unsqueeze(-1)  # => (K, batch, 1)
 
-        # weighted sum => (K, batch, out_dim) * (K, batch, 1)
-        # sum over K => (batch, out_dim)
+        # weighted sum => (K, batch, out_features) * (K, batch, 1)
+        # sum over K => (batch, out_features)
         weighted = alpha_t * stack_yo
-        y = weighted.sum(dim=0)  # (batch, out_dim)
+        y = weighted.sum(dim=0)  # (batch, out_features)
         return y

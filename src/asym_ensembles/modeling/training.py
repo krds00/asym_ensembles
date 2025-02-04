@@ -24,9 +24,9 @@ def train_mlp_model(args):
     (
         i,
         current_seed,
-        in_dim,
+        in_features,
         hidden_dim,
-        out_dim,
+        out_features,
         config,
         train_loader,
         val_loader,
@@ -41,7 +41,7 @@ def train_mlp_model(args):
     seed_value = current_seed + i
     set_global_seed(seed_value)
 
-    mlp = MLP(in_dim, hidden_dim, out_dim, num_layers=4, norm=None)
+    mlp = MLP(in_features, hidden_dim, out_features, num_layers=4, norm=None)
     optimizer = torch.optim.AdamW(
         mlp.parameters(),
         lr=config["learning_rate"],
@@ -71,9 +71,9 @@ def train_wmlp_model(args):
     (
         i,
         current_seed,
-        in_dim,
+        in_features,
         hidden_dim,
-        out_dim,
+        out_features,
         config,
         train_loader,
         val_loader,
@@ -90,7 +90,7 @@ def train_wmlp_model(args):
     set_global_seed(seed_value_wmlp)
 
     wmlp = WMLP(
-        in_dim, hidden_dim, out_dim, num_layers=4, mask_params=mask_params, norm=None
+        in_features, hidden_dim, out_features, num_layers=4, mask_params=mask_params, norm=None
     )
     optimizer_wmlp = torch.optim.AdamW(
         wmlp.parameters(),
@@ -134,6 +134,8 @@ def train_one_model(
     max_epochs=100,
     patience=16,
 ):
+    import wandb
+
     model.to(device)
     start_time = time.time()
 
@@ -141,10 +143,16 @@ def train_one_model(
     val_losses = []
     best_val_loss = float("inf")
     wait = 0
+    alpha_list = [] if isinstance(model, MoE) else None
 
     for epoch in range(max_epochs):
         model.train()
         epoch_loss = 0
+
+        if isinstance(model, MoE):
+            epoch_alpha_sum = None
+            epoch_samples = 0
+
         for Xb, yb in train_loader:
             Xb, yb = Xb.to(device), yb.to(device)
             optimizer.zero_grad()
@@ -153,6 +161,17 @@ def train_one_model(
             loss.backward()
             optimizer.step()
             epoch_loss += loss.item() * Xb.size(0)
+            if isinstance(model, MoE):
+                with torch.no_grad():
+                    logits = model.gating_layer(Xb)
+                    alpha = torch.softmax(logits, dim=-1)
+                    batch_sum = alpha.sum(dim=0)
+                    if epoch_alpha_sum is None:
+                        epoch_alpha_sum = batch_sum
+                    else:
+                        epoch_alpha_sum += batch_sum
+                    epoch_samples += Xb.size(0)
+
         epoch_loss /= len(train_loader.dataset)
         train_losses.append(epoch_loss)
 
@@ -167,6 +186,10 @@ def train_one_model(
         val_loss /= len(val_loader.dataset)
         val_losses.append(val_loss)
 
+        if isinstance(model, MoE) and epoch_samples > 0:
+            avg_alpha = epoch_alpha_sum / float(epoch_samples)  # (num_experts,)
+            alpha_list.append(avg_alpha.cpu().numpy().tolist())
+
         if val_loss < best_val_loss:
             best_val_loss = val_loss
             wait = 0
@@ -177,7 +200,10 @@ def train_one_model(
             break
 
     train_time = time.time() - start_time
-    return model, train_time, train_losses, val_losses
+    if isinstance(model, MoE):
+        return model, train_time, train_losses, val_losses, alpha_list
+    else:
+        return model, train_time, train_losses, val_losses
 
 
 def evaluate_model(model, test_loader, criterion, device, task_type="regression"):
@@ -222,7 +248,7 @@ def ensemble_predict(models, X, device, task_type="regression"):
             preds_list.append(preds.cpu())
         stack_preds = torch.stack(
             preds_list, dim=0
-        )  # (num_models, batch_size, out_dim)
+        )  # (num_models, batch_size, out_features)
         if task_type == "regression":
             return stack_preds.mean(dim=0)
         else:
@@ -288,20 +314,24 @@ def train_moe_single_combination(args):
     test_loader = DataLoader(test_ds, batch_size=config["batch_size"], shuffle=False)
 
     if task_type == "regression":
-        out_dim = 1
+        out_features = 1
         criterion = nn.MSELoss()
         metric_type = "rmse"
     else:
-        out_dim = len(torch.unique(train_ds.tensors[1]))
+        out_features = len(torch.unique(train_ds.tensors[1]))
         criterion = nn.CrossEntropyLoss()
         metric_type = "accuracy"
 
-    in_dim = train_ds.tensors[0].shape[1]
+    in_features = train_ds.tensors[0].shape[1]
     if model_type_str == "mlp":
         ExpertClass = MLP
         exp_params = {"num_layers": 4, "hidden_dim": hidden_dim}
     else:
         ExpertClass = WMLP
+        if hidden_dim in [64, 128]:
+            second_nfix = 3
+        else:
+            second_nfix = 4
         mask_params = {
             0: {
                 "mask_constant": 1,
@@ -313,19 +343,19 @@ def train_moe_single_combination(args):
                 "mask_constant": 1,
                 "mask_type": config["mask_type"],
                 "do_normal_mask": True,
-                "num_fixed": 3,
+                "num_fixed": second_nfix,
             },
             2: {
                 "mask_constant": 1,
                 "mask_type": config["mask_type"],
                 "do_normal_mask": True,
-                "num_fixed": 3,
+                "num_fixed": second_nfix,
             },
             3: {
                 "mask_constant": 1,
                 "mask_type": config["mask_type"],
                 "do_normal_mask": True,
-                "num_fixed": 3,
+                "num_fixed": second_nfix,
             },
         }
         exp_params = {
@@ -335,8 +365,8 @@ def train_moe_single_combination(args):
         }
 
     moe_model = MoE(
-        in_dim=in_dim,
-        out_dim=out_dim,
+        in_features=in_features,
+        out_features=out_features,
         num_experts=num_experts,
         expert_class=ExpertClass,
         expert_params=exp_params,
@@ -348,7 +378,7 @@ def train_moe_single_combination(args):
         weight_decay=config["weight_decay"],
     )
 
-    moe_model, train_time, train_losses, val_losses = train_one_model(
+    moe_model, train_time, train_losses, val_losses, alpha_list = train_one_model(
         moe_model,
         train_loader,
         val_loader,
@@ -373,4 +403,5 @@ def train_moe_single_combination(args):
         test_metric,
         len(train_losses),
         train_time,
+        alpha_list,
     )
