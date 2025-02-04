@@ -98,11 +98,7 @@ def load_covertype_dataset(test_ratio=0.2, val_ratio=0.1, seed=42):
     return train_ds, val_ds, test_ds
 
 
-def load_otto_csv(
-    path_csv="data/raw/otto.csv", test_ratio=0.2, val_ratio=0.1, seed=42
-):
-    import os
-
+def load_otto_csv(path_csv="data/raw/otto.csv", test_ratio=0.2, val_ratio=0.1, seed=42):
     df = pd.read_csv(path_csv)
     if "id" in df.columns:
         df.drop(columns=["id"], inplace=True)
@@ -248,7 +244,7 @@ def load_mnist_csv(
 
 
 def load_adult_csv(
-    path_csv="../data/raw/adult.csv", test_ratio=0.2, val_ratio=0.1, seed=42
+    path_csv="data/raw/adult.csv", test_ratio=0.2, val_ratio=0.1, seed=42
 ):
     df = pd.read_csv(path_csv)
     df["income"] = df["income"].map({"<=50K": 0, ">50K": 1})
@@ -302,7 +298,7 @@ def load_adult_csv(
 
 
 def load_churn_csv(
-    path_csv="../data/raw/Churn_Modelling.csv", test_ratio=0.2, val_ratio=0.1, seed=42
+    path_csv="data/raw/Churn_Modelling.csv", test_ratio=0.2, val_ratio=0.1, seed=42
 ):
     df = pd.read_csv(path_csv)
     y = df["Exited"].values

@@ -87,11 +87,16 @@ def train_wmlp_model(args):
         task_type,
     ) = args
 
-    seed_value_wmlp = current_seed + 2000 + i  # TODO: тут мб одну инициалищацию?
+    seed_value_wmlp = current_seed + 2000 + i
     set_global_seed(seed_value_wmlp)
 
     wmlp = WMLP(
-        in_features, hidden_dim, out_features, num_layers=4, mask_params=mask_params, norm=None
+        in_features,
+        hidden_dim,
+        out_features,
+        num_layers=4,
+        mask_params=mask_params,
+        norm=None,
     )
     optimizer_wmlp = torch.optim.AdamW(
         wmlp.parameters(),
