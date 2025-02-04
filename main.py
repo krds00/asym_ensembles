@@ -79,7 +79,7 @@ def main(cfg):
             test_loader = DataLoader(
                 test_ds, batch_size=config.batch_size, shuffle=False
             )
-            for hidden_dim in config.hidden_dims:
+            for hidden_dim in config.hidden_dims:  # TODO: where do you specify it?
                 print(f"\nDataset: {dataset_name}, Hidden_dim: {hidden_dim}")
                 if hidden_dim in [64, 128]:
                     second_nfix = 3
@@ -200,11 +200,11 @@ def main(cfg):
                     )
 
                     for (
-                        model,
-                        metric_wmlp,
-                        ratio,
-                        train_time_val_w,
-                        used_epochs_w,
+                            model,
+                            metric_wmlp,
+                            ratio,
+                            train_time_val_w,
+                            used_epochs_w,
                     ) in wmlp_results:
                         wmlp_models.append(model)
                         wmlp_metrics.append(metric_wmlp)
@@ -339,7 +339,7 @@ def main_moe(cfg):
     combos = []
     for dataset_name, task_type in config["all_datasets"]:
         for num_experts in config["num_experts"]:
-            for model_type_str in ["mlp", "wmlp"]:
+            for model_type_str in config['model_type_str']:
                 for rep_i in range(config["repeats"]):
                     combos.append(
                         (
@@ -438,8 +438,7 @@ if __name__ == "__main__":
         "weight_decay": 3e-2,
         "repeats": 1,
         "num_experts": [
-            4,
-            # 8, 16
+            4, 8, 16, 32
         ],
         "mask_type": "random_subsets",
         "base_seed": 1234,
@@ -452,5 +451,9 @@ if __name__ == "__main__":
             # ["adult", "classification"],
             # ["churn", "classification"],
         ],
+        "model_type_str": ["mlp", "wmlp", "imlp", "iwmlp"],
+        # "gating_type": 'standard',
+        "gating_type": 'gumbel',
+        # "model_type_str": ["imlp", "iwmlp"],  # mlp and wmlp with weight interpolation, after each layer
     }
     main_moe(cfg)

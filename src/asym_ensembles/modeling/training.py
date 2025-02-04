@@ -11,6 +11,7 @@ from torch.utils.data import DataLoader
 from src.asym_ensembles.data_loaders import load_dataset
 from src.asym_ensembles.modeling.models import MLP, WMLP
 from src.asym_ensembles.modeling.moe import MoE
+from src.asym_ensembles.modeling.moie import MoIE
 
 
 def set_global_seed(seed):
@@ -125,14 +126,14 @@ def train_wmlp_model(args):
 
 
 def train_one_model(
-    model,
-    train_loader,
-    val_loader,
-    criterion,
-    optimizer,
-    device,
-    max_epochs=100,
-    patience=16,
+        model,
+        train_loader,
+        val_loader,
+        criterion,
+        optimizer,
+        device,
+        max_epochs=100,
+        patience=16,
 ):
     import wandb
 
@@ -163,8 +164,11 @@ def train_one_model(
             epoch_loss += loss.item() * Xb.size(0)
             if isinstance(model, MoE):
                 with torch.no_grad():
-                    logits = model.gating_layer(Xb)
-                    alpha = torch.softmax(logits, dim=-1)
+                    # logits = model.gating_layer(Xb)
+                    # alpha = torch.softmax(logits, dim=-1)
+                    alpha = model.gate(Xb) if model.gating_type == 'standard' else model.gate(Xb,1)
+                    if alpha.dim() == 3:  # for Gumbel Sampling
+                        alpha = alpha.mean(dim=0)
                     batch_sum = alpha.sum(dim=0)
                     if epoch_alpha_sum is None:
                         epoch_alpha_sum = batch_sum
@@ -196,11 +200,11 @@ def train_one_model(
         else:
             wait += 1
         if wait >= patience:
-            print(f"Early stopping at epoch {epoch+1}")
+            print(f"Early stopping at epoch {epoch + 1}")
             break
 
     train_time = time.time() - start_time
-    if isinstance(model, MoE):
+    if isinstance(model, MoE) or isinstance(model, MoIE):
         return model, train_time, train_losses, val_losses, alpha_list
     else:
         return model, train_time, train_losses, val_losses
@@ -231,7 +235,7 @@ def evaluate_model(model, test_loader, criterion, device, task_type="regression"
 
     avg_loss = total_loss / total_samples
     if task_type == "regression":
-        rmse = float(avg_loss**0.5)
+        rmse = float(avg_loss ** 0.5)
         return rmse
     else:
         accuracy = correct / total_samples
@@ -279,7 +283,7 @@ def l2_distance_params(model_a, model_b):
     distance = 0.0
     for param_a, param_b in zip(model_a.parameters(), model_b.parameters()):
         distance += torch.norm(param_a - param_b, p=2).item() ** 2
-    return distance**0.5
+    return distance ** 0.5
 
 
 def average_pairwise_distance(models):
@@ -304,9 +308,9 @@ def train_moe_single_combination(args):
         rep_i,
         config,
     ) = args
-
     current_seed = config["base_seed"] + rep_i * 10000
     set_global_seed(current_seed)
+    print(f"gating type:{config['gating_type']}")
 
     train_ds, val_ds, test_ds = load_dataset(dataset_name)
     train_loader = DataLoader(train_ds, batch_size=config["batch_size"], shuffle=True)
@@ -328,6 +332,7 @@ def train_moe_single_combination(args):
         exp_params = {"num_layers": 4, "hidden_dim": hidden_dim}
     else:
         ExpertClass = WMLP
+
         if hidden_dim in [64, 128]:
             second_nfix = 3
         else:
@@ -359,18 +364,30 @@ def train_moe_single_combination(args):
             },
         }
         exp_params = {
-            "num_layers": 4,
+            "num_layers": 4,  # TODO: hardcode, nice to have it in the config, why here?
             "hidden_dim": hidden_dim,
             "mask_params": mask_params,
         }
-
-    moe_model = MoE(
-        in_features=in_features,
-        out_features=out_features,
-        num_experts=num_experts,
-        expert_class=ExpertClass,
-        expert_params=exp_params,
-    )
+    if model_type_str not in ['imlp', 'iwmlp']:
+        moe_model = MoE(
+            in_features=in_features,
+            out_features=out_features,
+            num_experts=num_experts,
+            expert_class=ExpertClass,
+            expert_params=exp_params,
+            gating_type=config['gating_type']
+        )
+    else:
+        moe_model = MoIE(
+            in_features=in_features,
+            out_features=out_features,
+            num_experts=num_experts,
+            hidden_dim=hidden_dim,
+            mask_params=mask_params if model_type_str == 'iwmlp' else None,
+            num_layers=4,
+            experts_type_str=model_type_str,
+            gating_type=config['gating_type']
+        )
 
     optimizer = torch.optim.AdamW(
         moe_model.parameters(),

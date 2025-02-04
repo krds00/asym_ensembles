@@ -27,13 +27,13 @@ class AsymSwiGLU(nn.Module):
 
 class SigmaMLP(nn.Module):
     def __init__(
-        self,
-        in_features,
-        hidden_dim,
-        out_features,
-        num_layers,
-        norm=None,
-        asym_act=True,
+            self,
+            in_features,
+            hidden_dim,
+            out_features,
+            num_layers,
+            norm=None,
+            asym_act=True,
     ):
         super().__init__()
         self.lins = nn.ModuleList()
@@ -87,7 +87,7 @@ class SigmaMLP(nn.Module):
 
 class WMLP(nn.Module):
     def __init__(
-        self, in_features, hidden_dim, out_features, num_layers, mask_params, norm=None
+            self, in_features, hidden_dim, out_features, num_layers, mask_params, norm=None
     ):
         super().__init__()
         self.lins = nn.ModuleList()
@@ -215,15 +215,15 @@ class MLP(nn.Module):
 
 class SparseLinear(nn.Module):
     def __init__(
-        self,
-        in_features,
-        out_features,
-        bias=True,
-        mask_type="densest",
-        mask_constant=1,
-        mask_num=0,
-        num_fixed=6,
-        do_normal_mask=True,
+            self,
+            in_features,
+            out_features,
+            bias=True,
+            mask_type="densest",
+            mask_constant=1,
+            mask_num=0,
+            num_fixed=6,
+            do_normal_mask=True,
     ):
 
         super().__init__()
@@ -270,8 +270,8 @@ class SparseLinear(nn.Module):
 
     def forward(self, x):
         self.weight.data = (
-            self.weight.data * self.mask
-            + (1 - self.mask) * self.mask_constant * self.normal_mask
+                self.weight.data * self.mask
+                + (1 - self.mask) * self.mask_constant * self.normal_mask
         )
 
         return F.linear(x, self.weight, self.bias)
@@ -281,8 +281,8 @@ class SparseLinear(nn.Module):
         nn.init.kaiming_uniform_(self.weight, a=math.sqrt(5))  # TODO: CHECK THAT
         # self.weight.data = 0 * self.mask
         self.weight.data = (
-            self.weight.data * self.mask
-            + (1 - self.mask) * self.mask_constant * self.normal_mask
+                self.weight.data * self.mask
+                + (1 - self.mask) * self.mask_constant * self.normal_mask
         )  # set entries where mask is zero to the normal mask at that point
 
         if self.bias is not None:
@@ -302,7 +302,6 @@ def get_subset(num_cols, row_idx, num_sample, mask_num):
 
 
 def normal_mask(out_features, in_features, mask_num):
-
     g = torch.Generator()
     g.manual_seed(abs(hash(str(mask_num))))
     return torch.randn(size=(out_features, in_features), generator=g)
