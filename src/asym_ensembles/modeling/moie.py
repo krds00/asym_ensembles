@@ -6,14 +6,15 @@ from src.asym_ensembles.modeling.gumbel import GumbelGatingNetwork
 
 class MoIEBlock(nn.Module):
     """
-    One "layer" containing K linear experts of shape (in_dim -> out_dim).
+    One "layer" containing K linear experts of shape (in_features -> out_features).
     In forward pass, we:
-      1) Pass x through each expert -> Z^{(k)}  [size (B, out_dim)]
+      1) Pass x through each expert -> Z^{(k)}  [size (B, out_features)]
       2) Compute alpha * Z^{(k)} and sum across k -> Z_combined
       3) Optionally apply an activation (e.g. ReLU).
     """
 
-    def __init__(self, in_dim, out_dim, num_experts, experts_type_str, mask_params, layer_number, activation=True):
+    def __init__(self, in_features, out_features, num_experts, experts_type_str, mask_params, layer_number,
+                 activation=True):
         """
 
         @type experts_type_str: str in ['MLP', 'WMLP']
@@ -25,8 +26,8 @@ class MoIEBlock(nn.Module):
 
         # Create K linear experts as a ModuleList
         self.experts = nn.ModuleList([
-            nn.Linear(in_dim, out_dim) if experts_type_str == 'imlp'
-            else SparseLinear(in_dim, out_dim, **mask_params[0], mask_num=layer_number)
+            nn.Linear(in_features, out_features) if experts_type_str == 'imlp'
+            else SparseLinear(in_features, out_features, **mask_params[0], mask_num=layer_number)
             for _ in range(num_experts)
         ])
         if self.activation:
@@ -35,33 +36,33 @@ class MoIEBlock(nn.Module):
     def forward(self, x, alpha):
         """
         Args:
-            x: shape (B, in_dim)
+            x: shape (B, in_features)
             alpha: shape (B, K) gating coefficients (one row per sample).
         Returns:
-            combined: shape (B, out_dim)
+            combined: shape (B, out_features)
         """
 
         # 1) For each expert k, compute Z^{(k)} = x W^{(k)} + b^{(k)}.
-        #    We'll stack them to shape (K, B, out_dim) for convenience.
+        #    We'll stack them to shape (K, B, out_features) for convenience.
         expert_outputs = []
         for k in range(self.num_experts):
-            Z_k = self.experts[k](x)  # shape (B, out_dim)
+            Z_k = self.experts[k](x)  # shape (B, out_features)
             expert_outputs.append(Z_k)
-        # Stack => shape (K, B, out_dim)
+        # Stack => shape (K, B, out_features)
         expert_outputs = torch.stack(expert_outputs, dim=0)
 
         # 2) Combine with alpha: Z_combined(i,:) = sum_k alpha[i,k] * Z_k(i,:)
         #    We can do this in a batched manner:
         #    Make alpha shape (B, K, 1) => then broadcast multiply with
-        #    expert_outputs (K, B, out_dim) after transposing or rearranging.
-        #    Easiest is to transpose expert_outputs to (B, K, out_dim) first.
-        expert_outputs = expert_outputs.transpose(0, 1)  # => (B, K, out_dim)
+        #    expert_outputs (K, B, out_features) after transposing or rearranging.
+        #    Easiest is to transpose expert_outputs to (B, K, out_features) first.
+        expert_outputs = expert_outputs.transpose(0, 1)  # => (B, K, out_features)
 
         # alpha: (B, K) => alpha.unsqueeze(-1): (B, K, 1)
         alpha_3d = alpha.unsqueeze(-1)  # => (B, K, 1)
 
-        # Multiply elementwise and sum over K => (B, out_dim)
-        combined = (expert_outputs * alpha_3d).sum(dim=1)  # (B, out_dim)
+        # Multiply elementwise and sum over K => (B, out_features)
+        combined = (expert_outputs * alpha_3d).sum(dim=1)  # (B, out_features)
 
         # 3) Optional activation
         if self.activation:
@@ -73,8 +74,8 @@ class MoIE(nn.Module):
     def __init__(
             self,
             *,
-            in_dim: None | int = None,
-            out_dim: None | int = None,
+            in_features: None | int = None,
+            out_features: None | int = None,
             num_layers: int,
             hidden_dim: int,
             # dropout: float, TODO: let's add?
@@ -104,8 +105,8 @@ class MoIE(nn.Module):
         print(f'num experts: {self.num_experts}')
         print(f'hidden dim: {self.hidden_dim}')
         print(f'mask params: {self.mask_params}')
-        # d_first = hidden_dim // num_experts if in_dim is None else in_dim
-        d_first = hidden_dim if in_dim is None else in_dim
+        # d_first = hidden_dim // num_experts if in_features is None else in_features
+        d_first = hidden_dim if in_features is None else in_features
 
         self.stat_alpha_sum = None
         # Gating network
@@ -133,33 +134,10 @@ class MoIE(nn.Module):
             ]
         )
 
-        # elif self.gating_type == 'bayesian':
-        #     self.gate = BayesianGatingNetwork(
-        #         in_features=d_first,
-        #         num_experts=num_experts,
-        #         prior_std=gating_prior_std,
-        #         device=self.device,
-        #     )
-        #
-        #     self.blocks = nn.ModuleList(
-        #         [
-        #             nn.Sequential(
-        #                 MoIEBlock(d_first if i == 0 else hidden_dim // num_experts, hidden_dim // num_experts, num_experts,
-        #                           activation=False),
-        #                 getattr(nn, activation)()
-        #             )
-        #             for i in range(num_layers)
-        #         ]
-        #     )
-
-        # self.output = None if out_dim is None else MoIEBlock(hidden_dim // num_experts, out_dim, num_experts,
-        self.output = None if out_dim is None else MoIEBlock(hidden_dim, out_dim, num_experts,
-                                                             experts_type_str, mask_params, num_layers,
-                                                             activation=False)
-        # print(f'out_dim:{out_dim}')
-        # print(self.blocks)
-        # print('output:')
-        # print(self.output)
+        # self.output = None if out_features is None else MoIEBlock(hidden_dim // num_experts, out_features, num_experts,
+        self.output = None if out_features is None else MoIEBlock(hidden_dim, out_features, num_experts,
+                                                                  experts_type_str, mask_params, num_layers,
+                                                                  activation=False)
 
         self.device = device
         self.gating_type = gating_type

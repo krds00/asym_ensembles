@@ -27,7 +27,13 @@ class AsymSwiGLU(nn.Module):
 
 class SigmaMLP(nn.Module):
     def __init__(
-            self, in_dim, hidden_dim, out_dim, num_layers, norm=None, asym_act=True
+            self,
+            in_features,
+            hidden_dim,
+            out_features,
+            num_layers,
+            norm=None,
+            asym_act=True,
     ):
         super().__init__()
         self.lins = nn.ModuleList()
@@ -50,18 +56,18 @@ class SigmaMLP(nn.Module):
                 raise ValueError("Bad norm type. Should be 'layer' or 'batch'")
 
         if num_layers == 1:
-            self.lins.append(nn.Linear(in_dim, out_dim))
+            self.lins.append(nn.Linear(in_features, out_features))
 
         else:
             if self.norm:
                 for _ in range(num_layers - 1):
                     self.norms.append(self.norm(hidden_dim))
 
-            self.lins.append(nn.Linear(in_dim, hidden_dim))
+            self.lins.append(nn.Linear(in_features, hidden_dim))
 
             for _ in range(num_layers - 2):
                 self.lins.append(nn.Linear(hidden_dim, hidden_dim))
-            self.lins.append(nn.Linear(hidden_dim, out_dim))
+            self.lins.append(nn.Linear(hidden_dim, out_features))
         self.flatten = nn.Flatten()
 
     def forward(self, x):
@@ -80,9 +86,12 @@ class SigmaMLP(nn.Module):
 
 
 class WMLP(nn.Module):
-    def __init__(self, in_dim, hidden_dim, out_dim, num_layers, mask_params, norm=None):
+    def __init__(
+            self, in_features, hidden_dim, out_features, num_layers, mask_params, norm=None
+    ):
         super().__init__()
         self.lins = nn.ModuleList()
+        self.mask_params = mask_params
         # Handle norm first
         if not norm:
             self.norm = None
@@ -98,7 +107,7 @@ class WMLP(nn.Module):
         # setup Lins
         if num_layers == 1:
             self.lins.append(
-                SparseLinear(in_dim, out_dim, **mask_params[0], mask_num=0)
+                SparseLinear(in_features, out_features, **mask_params[0], mask_num=0)
             )
 
         else:
@@ -107,7 +116,7 @@ class WMLP(nn.Module):
                     self.norms.append(self.norm(hidden_dim))
 
             self.lins.append(
-                SparseLinear(in_dim, hidden_dim, **mask_params[0], mask_num=0)
+                SparseLinear(in_features, hidden_dim, **mask_params[0], mask_num=0)
             )
             for i in range(num_layers - 2):
                 self.lins.append(
@@ -118,9 +127,9 @@ class WMLP(nn.Module):
             self.lins.append(
                 SparseLinear(
                     hidden_dim,
-                    out_dim,
+                    out_features,
                     **mask_params[num_layers - 1],
-                    mask_num=num_layers - 1
+                    mask_num=num_layers - 1,
                 )
             )
         self.activation = nn.GELU()
@@ -159,7 +168,7 @@ class WMLP(nn.Module):
 
 
 class MLP(nn.Module):
-    def __init__(self, in_dim, hidden_dim, out_dim, num_layers, norm=None):
+    def __init__(self, in_features, hidden_dim, out_features, num_layers, norm=None):
         super().__init__()
         self.lins = nn.ModuleList()
         self.activation = nn.GELU()
@@ -175,18 +184,18 @@ class MLP(nn.Module):
                 raise ValueError("Bad norm type. Should be 'layer' or 'batch'")
 
         if num_layers == 1:
-            self.lins.append(nn.Linear(in_dim, out_dim))
+            self.lins.append(nn.Linear(in_features, out_features))
 
         else:
             if self.norm:
                 for _ in range(num_layers - 1):
                     self.norms.append(self.norm(hidden_dim))
 
-            self.lins.append(nn.Linear(in_dim, hidden_dim))
+            self.lins.append(nn.Linear(in_features, hidden_dim))
 
             for _ in range(num_layers - 2):
                 self.lins.append(nn.Linear(hidden_dim, hidden_dim))
-            self.lins.append(nn.Linear(hidden_dim, out_dim))
+            self.lins.append(nn.Linear(hidden_dim, out_features))
         self.flatten = nn.Flatten()
 
     def forward(self, x):
@@ -207,8 +216,8 @@ class MLP(nn.Module):
 class SparseLinear(nn.Module):
     def __init__(
             self,
-            in_dim,
-            out_dim,
+            in_features,
+            out_features,
             bias=True,
             mask_type="densest",
             mask_constant=1,
@@ -216,22 +225,33 @@ class SparseLinear(nn.Module):
             num_fixed=6,
             do_normal_mask=True,
     ):
+
         super().__init__()
-        # assert out_dim < 2**in_dim, "out dim cannot be much higher than in dim" # out_dim < С(in_dim, num_fixed)
+        # assert out_features < 2**in_features, "out dim cannot be much higher than in dim" # out_features < С(in_features, num_fixed)
+        self.in_features = in_features
+        self.out_features = out_features
         mask = make_mask(
-            in_dim, out_dim, mask_type=mask_type, num_fixed=num_fixed, mask_num=mask_num
+            in_features,
+            out_features,
+            mask_type=mask_type,
+            num_fixed=num_fixed,
+            mask_num=mask_num,
         )
 
         self.register_buffer("mask", mask, persistent=True)
-        self.weight = nn.Parameter(torch.empty((out_dim, in_dim)))
+        self.weight = nn.Parameter(torch.empty((out_features, in_features)))
 
         if do_normal_mask:
             self.register_buffer(
-                "normal_mask", normal_mask(out_dim, in_dim, mask_num), persistent=True
+                "normal_mask",
+                normal_mask(out_features, in_features, mask_num),
+                persistent=True,
             )
         else:
             self.register_buffer(
-                "normal_mask", torch.ones(size=(out_dim, in_dim)), persistent=True
+                "normal_mask",
+                torch.ones(size=(out_features, in_features)),
+                persistent=True,
             )  # torch.ones -> does nothing
 
         hook = self.weight.register_hook(
@@ -239,7 +259,7 @@ class SparseLinear(nn.Module):
         )  # zeros out gradients for masked parts
 
         if bias:
-            self.bias = nn.Parameter(torch.empty(out_dim))
+            self.bias = nn.Parameter(torch.empty(out_features))
         else:
             self.register_parameter("bias", None)
 
@@ -270,7 +290,7 @@ class SparseLinear(nn.Module):
             bound = 1 / math.sqrt(fan_in) if fan_in > 0 else 0
             nn.init.uniform_(self.bias, -bound, bound)
 
-    def count_unused_params(self):  # TODO: add that to the logs (better as a ratio unused/total)
+    def count_unused_params(self):
         return (1 - self.mask.int()).sum().item()
 
 
@@ -281,63 +301,63 @@ def get_subset(num_cols, row_idx, num_sample, mask_num):
     return indices[torch.randperm(num_cols, generator=g)[:num_sample]]
 
 
-def normal_mask(out_dim, in_dim, mask_num):
+def normal_mask(out_features, in_features, mask_num):
     g = torch.Generator()
     g.manual_seed(abs(hash(str(mask_num))))
-    return torch.randn(size=(out_dim, in_dim), generator=g)
+    return torch.randn(size=(out_features, in_features), generator=g)
 
 
-def make_mask(in_dim, out_dim, mask_num=0, num_fixed=6, mask_type="densest"):
-    # out_dim x in_dim matrix
+def make_mask(in_features, out_features, mask_num=0, num_fixed=6, mask_type="densest"):
+    # out_features x in_features matrix
     # where each row is unique
-    # assert out_dim < 2 ** (in_dim) # out_dim < С(in_dim, num_fixed)
-    assert in_dim > 0 and out_dim > 0
+    # assert out_features < 2 ** (in_features) # out_features < С(in_features, num_fixed)
+    assert in_features > 0 and out_features > 0
 
     if mask_type == "densest":
-        mask = torch.ones(out_dim, in_dim)
+        mask = torch.ones(out_features, in_features)
         mask[0, :] = 1  # first row is dense
         row_idx = 1
-        if out_dim == 1:
+        if out_features == 1:
             return mask
 
-        for nz in range(1, in_dim):
-            for zeros_in_row in itertools.combinations(range(in_dim), nz):
+        for nz in range(1, in_features):
+            for zeros_in_row in itertools.combinations(range(in_features), nz):
                 mask[row_idx, zeros_in_row] = 0
                 row_idx += 1
-                if row_idx >= out_dim:
+                if row_idx >= out_features:
                     return mask
     elif mask_type == "bound_zeros":
         # other type of mask based on lower bounding sparsity to break symmetries more
-        mask = torch.ones(out_dim, in_dim)
+        mask = torch.ones(out_features, in_features)
         least_zeros = num_fixed
         row_idx = 0
-        for nz in range(least_zeros, in_dim):
-            for zeros_in_row in itertools.combinations(range(in_dim), nz):
+        for nz in range(least_zeros, in_features):
+            for zeros_in_row in itertools.combinations(range(in_features), nz):
                 mask[row_idx, zeros_in_row] = 0
                 row_idx += 1
-                if row_idx >= out_dim:
+                if row_idx >= out_features:
                     return mask
 
         raise ValueError(
-            "Error in making mask, possibly because out_dim is too large for these settings"
+            "Error in making mask, possibly because out_features is too large for these settings"
         )
 
     elif mask_type == "random_subsets":
         # other type of mask based on lower bounding sparsity to break symmetries more
-        mask = torch.ones(out_dim, in_dim)
+        mask = torch.ones(out_features, in_features)
         row_idx = 0
         least_zeros = num_fixed
-        for nz in range(least_zeros, in_dim):
+        for nz in range(least_zeros, in_features):
             while True:
 
-                zeros_in_row = get_subset(in_dim, row_idx, least_zeros, mask_num)
+                zeros_in_row = get_subset(in_features, row_idx, least_zeros, mask_num)
                 mask[row_idx, zeros_in_row] = 0
                 row_idx += 1
-                if row_idx >= out_dim:
+                if row_idx >= out_features:
                     return mask
 
         raise ValueError(
-            "Error in making mask, possibly because out_dim is too large for these settings"
+            "Error in making mask, possibly because out_features is too large for these settings"
         )
     else:
         raise ValueError("Invalid mask type")
@@ -348,3 +368,47 @@ def calc_masked_weights_ratio(sp_lin: SparseLinear):
     masked = (1 - sp_lin.mask).sum().item()
     ratio = 100.0 * masked / total if total > 0 else 0.0
     return ratio, masked, total
+
+
+class InterpolatedModel(nn.Module):
+    def __init__(self, models_list):
+        super().__init__()
+        base = models_list[0]
+        if isinstance(base, MLP):
+            base_class = MLP
+        elif isinstance(base, WMLP):
+            base_class = WMLP
+        else:
+            raise ValueError("Unknown model type")
+        in_features = base.lins[0].in_features
+        hidden_dim = base.lins[0].out_features
+        out_features = base.lins[-1].out_features
+        num_layers = len(base.lins)
+        if base_class is MLP:
+            self.model = MLP(
+                in_features, hidden_dim, out_features, num_layers, norm=None
+            )
+        else:
+            mask_params = getattr(base, "mask_params", {}) or {}
+            self.model = WMLP(
+                in_features,
+                hidden_dim,
+                out_features,
+                num_layers,
+                mask_params,
+                norm=None,
+            )
+        self.interpolate_weights(models_list)
+
+    def interpolate_weights(self, models_list):
+        with torch.no_grad():
+            for param in self.model.parameters():
+                param.zero_()
+            for m in models_list:
+                for p_target, p_source in zip(self.model.parameters(), m.parameters()):
+                    p_target.add_(p_source.data)
+            for param in self.model.parameters():
+                param.div_(len(models_list))
+
+    def forward(self, x):
+        return self.model(x)

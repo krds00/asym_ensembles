@@ -11,9 +11,11 @@ def main(cfg):
 
     import wandb
     from src.asym_ensembles.data_loaders import load_dataset
+    from src.asym_ensembles.modeling.models import InterpolatedModel
     from src.asym_ensembles.modeling.training import (
         average_pairwise_distance,
         evaluate_ensemble,
+        evaluate_model,
         train_mlp_model,
         train_wmlp_model,
     )
@@ -63,6 +65,8 @@ def main(cfg):
             "ens_size",
             "mlp_ens_metric",
             "wmlp_ens_metric",
+            "mlp_interp_metric",
+            "wmlp_interp_metric",
         ]
     )
     try:
@@ -107,13 +111,13 @@ def main(cfg):
                         "num_fixed": second_nfix,
                     },
                 }
-                in_dim = train_ds.tensors[0].shape[1]
+                in_features = train_ds.tensors[0].shape[1]
                 if task_type == "regression":
-                    out_dim = 1
+                    out_features = 1
                     criterion = nn.MSELoss()
                     metric_type = "rmse"
                 else:
-                    out_dim = len(torch.unique(train_ds.tensors[1]))
+                    out_features = len(torch.unique(train_ds.tensors[1]))
                     criterion = nn.CrossEntropyLoss()
                     metric_type = "accuracy"
 
@@ -131,9 +135,9 @@ def main(cfg):
                         (
                             i,
                             current_seed,
-                            in_dim,
+                            in_features,
                             hidden_dim,
-                            out_dim,
+                            out_features,
                             copy.deepcopy(cfg),
                             train_loader,
                             val_loader,
@@ -172,9 +176,9 @@ def main(cfg):
                         (
                             i,
                             current_seed,
-                            in_dim,
+                            in_features,
                             hidden_dim,
-                            out_dim,
+                            out_features,
                             copy.deepcopy(cfg),
                             train_loader,
                             val_loader,
@@ -220,13 +224,6 @@ def main(cfg):
 
                     avg_dist_mlp = average_pairwise_distance(mlp_models)
                     avg_dist_wmlp = average_pairwise_distance(wmlp_models)
-
-                    avg_wmlp_masked_ratio = (
-                        float(np.mean(wmlp_masked_ratios))
-                        if wmlp_masked_ratios
-                        else 0.0
-                    )
-
                     mean_mlp_metric = float(np.mean(mlp_metrics))
                     std_mlp_metric = float(np.std(mlp_metrics))
                     min_mlp_metric = float(np.min(mlp_metrics))
@@ -236,8 +233,6 @@ def main(cfg):
                     std_wmlp_metric = float(np.std(wmlp_metrics))
                     min_wmlp_metric = float(np.min(wmlp_metrics))
                     max_wmlp_metric = float(np.max(wmlp_metrics))
-                    ensemble_results_mlp = {}
-                    ensemble_results_wmlp = {}
                     for ens_size in config.ensemble_sizes:
                         mlp_sub = mlp_models[:ens_size]
                         wmlp_sub = wmlp_models[:ens_size]
@@ -247,10 +242,22 @@ def main(cfg):
                         ens_metric_wmlp = evaluate_ensemble(
                             wmlp_sub, test_loader, config.device, task_type=task_type
                         )
-                        ensemble_results_mlp[ens_size] = ens_metric_mlp
-                        ensemble_results_wmlp[ens_size] = ens_metric_wmlp
-
-                    for ens_size in config.ensemble_sizes:
+                        interp_mlp = InterpolatedModel(mlp_models[:ens_size])
+                        interp_mlp_metric = evaluate_model(
+                            interp_mlp,
+                            test_loader,
+                            criterion,
+                            config.device,
+                            task_type=task_type,
+                        )
+                        interp_wmlp = InterpolatedModel(wmlp_models[:ens_size])
+                        interp_wmlp_metric = evaluate_model(
+                            interp_wmlp,
+                            test_loader,
+                            criterion,
+                            config.device,
+                            task_type=task_type,
+                        )
                         table2.add_data(
                             dataset_name,
                             hidden_dim,
@@ -267,8 +274,10 @@ def main(cfg):
                             min_wmlp_metric,
                             max_wmlp_metric,
                             ens_size,
-                            ensemble_results_mlp[ens_size],
-                            ensemble_results_wmlp[ens_size],
+                            ens_metric_mlp,
+                            ens_metric_wmlp,
+                            interp_mlp_metric,
+                            interp_wmlp_metric,
                         )
 
                     print(f"Repetition {rep_i + 1}/{config.repeats} finished.")
@@ -283,10 +292,6 @@ def main(cfg):
 
 
 def main_moe(cfg):
-    """
-    Аналог main(), но распараллеливаем
-    (dataset_name, num_experts, hidden_dim, model_type, rep_i)
-    """
     import multiprocessing
     from copy import deepcopy
 
@@ -320,6 +325,17 @@ def main_moe(cfg):
         ]
     )
 
+    alpha_table = wandb.Table(
+        columns=[
+            "dataset_name",
+            "num_experts",
+            "hidden_dim",
+            "repeat_index",
+            "model_type",
+            "alpha_list",  # список средних α за эпохи
+        ]
+    )
+
     combos = []
     for dataset_name, task_type in config["all_datasets"]:
         for num_experts in config["num_experts"]:
@@ -343,26 +359,73 @@ def main_moe(cfg):
     )
 
     for row in results:
-        table3.add_data(*row)
+        (
+            dataset_name,
+            num_experts,
+            hidden_dim,
+            rep_index,
+            metric_type,
+            model_type_str,
+            test_metric,
+            num_epochs,
+            train_time,
+            alpha_list,
+        ) = row
+        table3.add_data(
+            dataset_name,
+            num_experts,
+            hidden_dim,
+            rep_index,
+            metric_type,
+            model_type_str,
+            test_metric,
+            num_epochs,
+            train_time,
+        )
+        if alpha_list is not None:
+            alpha_table.add_data(
+                dataset_name,
+                num_experts,
+                hidden_dim,
+                rep_index,
+                model_type_str,
+                alpha_list,
+            )
 
-    wandb.log({"MoE_Results_Table3": table3})
+    wandb.log({"MoE_Results_Table3": table3, "MoE_Alpha_Table": alpha_table})
     wandb.finish()
 
 
 # if __name__ == "__main__":
 #     cfg = {
 #         "batch_size": 256,
-#         "max_epochs": 1000,
-#         "patience": 16,
+#         "max_epochs": 100,
+#         "patience": 3,
 #         "learning_rate": 1e-3,
 #         "weight_decay": 3e-2,
-#         "hidden_dims": [64, 128, 256],
-#         "ensemble_sizes": [2, 4, 8, 16, 32, 64],
-#         "total_models": 64,  # max(ensemble_sizes)
-#         "repeats": 10,  # different seeds
+#         "hidden_dims": [
+#             64,
+#             # 128, 256
+#         ],
+#         "ensemble_sizes": [
+#             2,
+#             4,
+#             8,
+#             # , 16, 32, 64
+#         ],
+#         "total_models": 8,  # max(ensemble_sizes)
+#         "repeats": 1,  # different seeds
 #         "mask_type": "random_subsets",
 #         "base_seed": 1234,
 #         "device": "cpu",  # parallel by cpu
+#         "all_datasets": [
+#             ["california", "regression"],
+#             # ["otto", "classification"],
+#             # ["telcom", "classification"],
+#             # ["mnist", "classification"],
+#             # ["adult", "classification"],
+#             # ["churn", "classification"],
+#         ],
 #     }
 #     main(cfg)
 
@@ -382,10 +445,15 @@ if __name__ == "__main__":
         "device": "cpu",
         "all_datasets": [
             ["california", "regression"],
-            ["otto", "classification"],
+            # ["otto", "classification"],
+            # ["telcom", "classification"],
+            # ["mnist", "classification"],
+            # ["adult", "classification"],
+            # ["churn", "classification"],
         ],
         "model_type_str": ["mlp", "wmlp", "imlp", "iwmlp"],
-        "gating_type": 'standard',
+        # "gating_type": 'standard',
+        "gating_type": 'gumbel',
         # "model_type_str": ["imlp", "iwmlp"],  # mlp and wmlp with weight interpolation, after each layer
     }
     main_moe(cfg)
