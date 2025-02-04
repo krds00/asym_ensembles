@@ -18,7 +18,7 @@ class MoE(nn.Module):
             gating_type: str = 'standard',  # {'standard', 'gumbel'}
             tau: float = 2.0,  # {'standard', 'softmax'}
             device: str = 'cpu',
-            default_num_samples : int = 10,
+            default_num_samples: int = 10,
     ):
         assert gating_type in ['standard', 'gumbel'], f"gating type:{gating_type} is not supported"
 
@@ -91,24 +91,31 @@ class MoE(nn.Module):
             num_samples = self.default_num_samples
 
         alpha = self.gate(x) if self.gating_type == 'standard' else self.gate(x, num_samples)
-
+        if alpha.dim() == 2:
+            alpha = alpha.transpose(-1, -2)
+        else:
+            alpha = alpha.permute(0, 2, 1)
         expert_outs = []
         for k in range(self.num_experts):
             y_k = self.experts[k](x)  # (batch, out_dim)
             expert_outs.append(y_k)
         stack_yo = torch.stack(expert_outs, dim=0)  # (num_experts,batch,out)
 
-        print('check stack_yo shape')
-        print(stack_yo.shape)
-
         if self.training or num_samples < 2 or self.gating_type == 'standard':
             output = torch.sum(alpha.unsqueeze(-1) * stack_yo, dim=0)
         else:
+
+            # print('alpha shape:')
+            # print(alpha.shape)
+            # print('check stack_yo shape')
+            # print(stack_yo.shape)
             # EVAL MODE (monte carlo)
-            weighted_expert_outputs = alpha.unsqueeze(-1) * x.unsqueeze(0)
+            weighted_expert_outputs = alpha.unsqueeze(-1) * stack_yo.unsqueeze(0)
 
             # 4) Sum over experts => [10, batch_size, output_dim]
             weighted_sums = torch.sum(weighted_expert_outputs, dim=1)
+            # print('wegithed sums:')
+            # print(weighted_sums.shape)
 
             # [ num_samples, batch_size, output_dim]
             output = weighted_sums.mean(dim=0)

@@ -75,7 +75,7 @@ def main(cfg):
             test_loader = DataLoader(
                 test_ds, batch_size=config.batch_size, shuffle=False
             )
-            for hidden_dim in config.hidden_dims: #TODO: where do you specify it?
+            for hidden_dim in config.hidden_dims:  # TODO: where do you specify it?
                 print(f"\nDataset: {dataset_name}, Hidden_dim: {hidden_dim}")
                 if hidden_dim in [64, 128]:
                     second_nfix = 3
@@ -384,7 +384,8 @@ if __name__ == "__main__":
             ["california", "regression"],
             ["otto", "classification"],
         ],
-        "model_type_str" : ["mlp", "wmlp"],
+        "model_type_str": ["mlp", "wmlp", "imlp", "iwmlp"],
+        "gating_type": 'standard',
         # "model_type_str": ["imlp", "iwmlp"],  # mlp and wmlp with weight interpolation, after each layer
     }
     main_moe(cfg)
