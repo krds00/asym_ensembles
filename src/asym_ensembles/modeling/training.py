@@ -311,6 +311,7 @@ def train_moe_single_combination(args):
         hidden_dim,
         model_type_str,
         rep_i,
+        gating_type,
         config,
     ) = args
     current_seed = config["base_seed"] + rep_i * 10000
@@ -379,7 +380,7 @@ def train_moe_single_combination(args):
             num_experts=num_experts,
             expert_class=ExpertClass,
             expert_params=exp_params,
-            gating_type=config['gating_type']
+            gating_type=gating_type
         )
     else:
         moe_model = MoIE(
@@ -390,7 +391,7 @@ def train_moe_single_combination(args):
             mask_params=mask_params if model_type_str == 'iwmlp' else None,
             num_layers=4,
             experts_type_str=model_type_str,
-            gating_type=config['gating_type']
+            gating_type=gating_type
         )
 
     optimizer = torch.optim.AdamW(

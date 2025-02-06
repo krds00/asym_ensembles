@@ -341,18 +341,20 @@ def main_moe(cfg):
     for dataset_name, task_type in config["all_datasets"]:
         for num_experts in config["num_experts"]:
             for model_type_str in config["model_type_str"]:
-                for rep_i in range(config["repeats"]):
-                    combos.append(
-                        (
-                            dataset_name,
-                            task_type,
-                            num_experts,
-                            1024 // num_experts,
-                            model_type_str,
-                            rep_i,
-                            deepcopy(cfg),
+                for gating_type in config["gating_type"]:
+                    for rep_i in range(config["repeats"]):
+                        combos.append(
+                            (
+                                dataset_name,
+                                task_type,
+                                num_experts,
+                                64,
+                                model_type_str,
+                                rep_i,
+                                gating_type,
+                                deepcopy(cfg),
+                            )
                         )
-                    )
 
     results = Parallel(n_jobs=n_jobs)(
         delayed(train_moe_single_combination)(combo)
@@ -382,7 +384,7 @@ def main_moe(cfg):
             test_metric,
             num_epochs,
             train_time,
-            config["gating_type"],
+            gating_type,
         )
         if alpha_list is not None:
             alpha_table.add_data(
@@ -423,7 +425,6 @@ def main_moe(cfg):
 #         "all_datasets": [
 #             ["california", "regression"],
 #             # ["otto", "classification"],
-#             # ["telcom", "classification"],
 #             # ["mnist", "classification"],
 #             # ["adult", "classification"],
 #             # ["churn", "classification"],
@@ -440,7 +441,8 @@ if __name__ == "__main__":
         "weight_decay": 3e-2,
         "repeats": 1,
         "num_experts": [
-            4,
+            2,
+            # 4,
             # 8,
             # 16, 32
         ],
@@ -450,13 +452,11 @@ if __name__ == "__main__":
         "all_datasets": [
             # ["california", "regression"],
             ["otto", "classification"],
-            # ["telcom", "classification"],
             # ["mnist", "classification"],
             # ["adult", "classification"],
             ["churn", "classification"],
         ],
         "model_type_str": ["mlp", "wmlp", "imlp", "iwmlp"],
-        "gating_type": "standard",
-        # "gating_type": "gumbel",
+        "gating_type": ["standard", "gumbel"],
     }
     main_moe(cfg)
