@@ -344,7 +344,6 @@ def main_moe(cfg):
             for model_type_str in config["model_type_str"]:
                 for gating_type in config["gating_type"]:
                     for rep_i in range(config["repeats"]):
-                        print(f"gating_type: {gating_type}")
                         combos.append(
                             (
                                 dataset_name,
