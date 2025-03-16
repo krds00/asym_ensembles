@@ -1,5 +1,7 @@
 Implementation of [The Empirical Impact of Reducing Symmetries on the Performance of Deep Ensembles and MoE](https://arxiv.org/abs/2502.17391)
 
+![](https://github.com/krds00/asym_ensembles/raw/main/reports/figures/figure1.png)
+
 cite it with
 ```
 @misc{chernov2025empiricalimpactreducingsymmetries,
